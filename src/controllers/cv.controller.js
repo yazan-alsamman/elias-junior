@@ -9,6 +9,7 @@ const {
   Portfolio,
 } = require('../models');
 const { analyzeExtractedText, inferSpecialization } = require('../services/atsHeuristic');
+const { analyzeCvFileViaFastapi } = require('../services/atsFastapiClient');
 
 async function cascadeDeleteAnalysisForDocument(documentId) {
   const profiles = await CVParsedProfile.find({ documentId });
@@ -254,10 +255,128 @@ async function analyzeDocument(req, res) {
   }
 }
 
+async function uploadAndAnalyzeFile(req, res) {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'file is required (multipart field: file)' });
+    }
+
+    const originalFileName = String(req.file.originalname || '').trim();
+    if (!originalFileName) {
+      return res.status(400).json({ error: 'original file name missing' });
+    }
+    const ext = originalFileName.toLowerCase().split('.').pop();
+    if (!['pdf', 'docx'].includes(ext)) {
+      return res.status(400).json({ error: 'Only PDF and DOCX files are supported' });
+    }
+
+    const fast = await analyzeCvFileViaFastapi({
+      fileBuffer: req.file.buffer,
+      fileName: originalFileName,
+    });
+
+    const doc = await CVDocument.create({
+      userId: req.userId,
+      originalFileName,
+      fileType: ext,
+      extractedText: `Uploaded for ATS format check: ${originalFileName}`,
+      documentStage: 'analyzed',
+      generatedBy: 'user',
+      fileUrl: '',
+    });
+    await CVVersion.create({
+      userId: req.userId,
+      documentId: doc._id,
+      versionNo: 1,
+    });
+
+    const ats = await ATSCheckReport.create({
+      documentId: doc._id,
+      score: fast.score,
+      status: fast.status,
+      extractedTextLength: fast.extractedTextLength,
+      keywordsChecked: fast.keywordsChecked,
+      keywordsTotal: fast.keywordsTotal,
+      formatScore: fast.formatScore,
+      sectionMatch: fast.sectionMatch,
+      estimatedSecondsLeft: fast.estimatedSecondsLeft,
+      missingKeywords: fast.missingKeywords,
+      recommendationBullets: fast.recommendationBullets,
+      suitabilityHeadline: fast.suitabilityHeadline,
+      issuesSummary: fast.issuesSummary,
+      severity: fast.severity,
+      canAutoFix: fast.canAutoFix,
+      autoFixApplied: fast.autoFixApplied,
+      failureReason: fast.failureReason,
+      templateId: fast.templateId,
+    });
+
+    const spec = inferSpecialization(doc.extractedText);
+    const profile = await CVParsedProfile.create({
+      documentId: doc._id,
+      fullNameExtracted: '',
+      emailExtracted: '',
+      specializationDetected: spec,
+      rawJson: JSON.stringify({
+        engine: fast.templateId,
+        score: fast.score,
+        issues: fast.missingKeywords,
+      }),
+    });
+
+    const assessment = await SkillAssessment.create({
+      profileId: profile._id,
+      targetSpecialization: spec,
+      strengthScore: fast.score,
+      breakdownJson: JSON.stringify({
+        format: fast.formatScore,
+        keywords: fast.keywordsChecked,
+        total: fast.keywordsTotal,
+      }),
+    });
+
+    const recs = [
+      {
+        assessmentId: assessment._id,
+        recType: 'keyword',
+        title: 'ATS format issues',
+        description: fast.recommendationBullets[0] || 'Apply ATS format recommendations.',
+        priority: 'high',
+      },
+      {
+        assessmentId: assessment._id,
+        recType: 'format',
+        title: 'Structure',
+        description: fast.recommendationBullets[1] || 'Use clear section headings and simple layout.',
+        priority: 'medium',
+      },
+      {
+        assessmentId: assessment._id,
+        recType: 'metrics',
+        title: 'Readability',
+        description: fast.recommendationBullets[2] || 'Keep content plain text and concise.',
+        priority: 'medium',
+      },
+    ];
+    await Recommendation.insertMany(recs);
+
+    return res.status(201).json({
+      document: serializeCv(doc, ats),
+      profileId: profile._id.toString(),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(502).json({
+      error: `ATS engine unavailable: ${err.message}`,
+    });
+  }
+}
+
 module.exports = {
   listDocuments,
   createDocument,
   getDocument,
   deleteDocument,
   analyzeDocument,
+  uploadAndAnalyzeFile,
 };
