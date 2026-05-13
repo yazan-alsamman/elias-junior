@@ -91,7 +91,11 @@ async function analyzeCvFileViaFastapi({ fileBuffer, fileName }) {
   form.append('file', blob, fileName);
 
   const token = process.env.ATS_FASTAPI_BEARER_TOKEN?.trim();
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers = {
+    'ngrok-skip-browser-warning': 'true',
+    'User-Agent': 'CareerPath-Backend/1.0',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), timeoutMs);
