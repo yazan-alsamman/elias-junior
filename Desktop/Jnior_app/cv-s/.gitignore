@@ -1,3 +1,2 @@
-# Large generated test PDFs (~5 MB each)
-cv_ats_score_05.pdf
-cv_ats_score_05b.pdf
+# Regenerate with generate_test_cvs.py
+*.pdf
