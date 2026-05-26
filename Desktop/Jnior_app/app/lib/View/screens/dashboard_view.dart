@@ -373,7 +373,6 @@ class _StatCard extends StatelessWidget {
     return GlowCard(
       glowColor: accent,
       padding: const EdgeInsets.all(AppSpacing.lg),
-      onTap: () {},
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -796,7 +795,6 @@ class _CVItemCard extends StatelessWidget {
     return GlowCard(
       glowColor: color,
       padding: const EdgeInsets.all(AppSpacing.md),
-      onTap: () {},
       child: Row(
         children: <Widget>[
           Container(

@@ -51,6 +51,21 @@ class ATSCheckReport {
       engine == 'heuristic-v1' ||
       isUnavailable;
 
+  /// Short label for compare UI (legacy heuristic vs real ATS engine).
+  String get engineLabel {
+    if (isRealAts) return 'ATS';
+    if (isFallback) return 'Legacy';
+    return engine.isEmpty ? 'Unknown' : engine;
+  }
+
+  /// Whether [other] was scored with the same engine family (apples-to-apples).
+  bool scoresAreComparable(ATSCheckReport other) {
+    if (isUnavailable || other.isUnavailable) return false;
+    if (isRealAts && other.isRealAts) return true;
+    if (isFallback && other.isFallback) return true;
+    return false;
+  }
+
   /// Pill text on dashboard CV rows (legacy rows used "Parsed" for low scores).
   String get listBadgeLabel {
     if (decision.isNotEmpty) {
