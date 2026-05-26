@@ -24,6 +24,9 @@ enum PostUploadStep {
 }
 
 class CVController extends GetxController {
+  /// Last successfully parsed profile (same session) when Mongo has no JSON yet.
+  ParsedCvProfile? lastPortfolioProfile;
+
   static const List<String> progressMessages = <String>[
     'Reading your CV…',
     'Running ATS format check…',
@@ -80,7 +83,9 @@ class CVController extends GetxController {
         !text.toLowerCase().startsWith('uploaded for ats')) {
       final ParsedCvProfile? parsed = CvTextHeuristic.parseResumeText(text);
       if (parsed != null && parsed.hasPortfolioData) {
-        return doc.copyWithParsed(parsed);
+        final CVDocument enriched = doc.copyWithParsed(parsed);
+        lastPortfolioProfile = parsed;
+        return enriched;
       }
     }
     return doc;
@@ -309,22 +314,41 @@ class CVController extends GetxController {
         return;
       }
 
+      final String resumeText = atsResult.extractedText;
       Map<String, dynamic>? parsedCvMap;
+      ParsedCvProfile? localParsed;
       String parseEngine = 'text-heuristic-v1';
-      try {
-        final Map<String, dynamic> extracted =
-            await CareerApiService.to.extractParseCvFile(
-          fileBytes: fileBytes,
-          fileName: name,
-        );
-        final Object? raw = extracted['parsedCv'];
-        if (raw is Map<String, dynamic>) {
-          parsedCvMap = raw;
-          parseEngine =
-              (extracted['parseEngine'] as String?) ?? parseEngine;
+
+      if (resumeText.length > 80) {
+        localParsed = CvTextHeuristic.parseResumeText(resumeText);
+        if (localParsed != null && localParsed.hasPortfolioData) {
+          parsedCvMap = localParsed.toPortfolioJson();
         }
-      } catch (_) {
-        /* save-analysis may still parse via fileBase64 on server */
+      } else if (resumeText.isEmpty) {
+        AuroraSnack.warning(
+          'CV text',
+          'Restart ATS (start-local-dev.cmd) so the engine returns résumé text for your portfolio.',
+          duration: const Duration(seconds: 7),
+        );
+      }
+
+      if (parsedCvMap == null) {
+        try {
+          final Map<String, dynamic> extracted =
+              await CareerApiService.to.extractParseCvFile(
+            fileBytes: fileBytes,
+            fileName: name,
+          );
+          final Object? raw = extracted['parsedCv'];
+          if (raw is Map<String, dynamic>) {
+            parsedCvMap = raw;
+            localParsed = ParsedCvProfile.fromJson(parsedCvMap);
+            parseEngine =
+                (extracted['parseEngine'] as String?) ?? parseEngine;
+          }
+        } catch (_) {
+          /* Hostinger may lack extract-parse; client ATS text is enough */
+        }
       }
 
       final Map<String, dynamic> saved =
@@ -336,17 +360,20 @@ class CVController extends GetxController {
         fileName: name,
         parsedCv: parsedCvMap,
         parseEngine: parseEngine,
+        resumeText: resumeText,
       );
 
       CVDocument uploaded = CVDocument.fromUploadResponse(saved);
       if (saved['_saveVia'] == 'upload-analyze') {
         uploaded = uploaded.copyWith(report: atsResult.toAtsCheckReport());
       }
-      if ((uploaded.parsedProfile == null ||
+      if (localParsed != null && localParsed.hasPortfolioData) {
+        uploaded = uploaded.copyWithParsed(localParsed);
+      } else if ((uploaded.parsedProfile == null ||
               !uploaded.parsedProfile!.hasPortfolioData) &&
-          uploaded.extractedText.length > 80) {
+          resumeText.length > 80) {
         final ParsedCvProfile? fromText =
-            CvTextHeuristic.parseResumeText(uploaded.extractedText);
+            CvTextHeuristic.parseResumeText(resumeText);
         if (fromText != null) {
           uploaded = uploaded.copyWithParsed(fromText);
         }
@@ -354,6 +381,10 @@ class CVController extends GetxController {
         uploaded = uploaded.copyWithParsed(
           ParsedCvProfile.fromJson(parsedCvMap),
         );
+      }
+      if (uploaded.parsedProfile != null &&
+          uploaded.parsedProfile!.hasPortfolioData) {
+        lastPortfolioProfile = uploaded.parsedProfile;
       }
       documents.add(uploaded);
       if (Get.isRegistered<PortfolioController>()) {

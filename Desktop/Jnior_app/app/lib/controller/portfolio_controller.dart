@@ -232,6 +232,12 @@ class PortfolioController extends GetxController {
       return;
     }
 
+    final ParsedCvProfile? cached = cv.lastPortfolioProfile;
+    if (cached != null && cached.hasPortfolioData) {
+      _applyParsedToPortfolio(cached);
+      return;
+    }
+
     if (showPreview && displayUsername.isNotEmpty) {
       AuroraSnack.warning(
         'CV data missing',

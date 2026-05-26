@@ -120,6 +120,7 @@ class CareerApiService extends GetxService {
     required Map<String, dynamic> ats,
     Map<String, dynamic>? parsedCv,
     String parseEngine = '',
+    String resumeText = '',
     Uint8List? fileBytes,
     String? fileName,
   }) async {
@@ -131,6 +132,7 @@ class CareerApiService extends GetxService {
         ats: ats,
         parsedCv: parsedCv,
         parseEngine: parseEngine,
+        resumeText: resumeText,
         fileBytes: fileBytes,
         fileName: fileName ?? originalFileName,
       );
@@ -169,6 +171,7 @@ class CareerApiService extends GetxService {
             ats: ats,
             parsedCv: parsedCv,
             parseEngine: parseEngine,
+            resumeText: resumeText,
             fileBytes: fileBytes,
             fileName: fileName ?? originalFileName,
           );
@@ -206,6 +209,7 @@ class CareerApiService extends GetxService {
     required Map<String, dynamic> ats,
     Map<String, dynamic>? parsedCv,
     String parseEngine = '',
+    String resumeText = '',
     Uint8List? fileBytes,
     String? fileName,
   }) async {
@@ -218,6 +222,7 @@ class CareerApiService extends GetxService {
       'ats': ats,
       if (parsedCv != null) 'parsedCv': parsedCv,
       if (parseEngine.isNotEmpty) 'parseEngine': parseEngine,
+      if (resumeText.trim().length >= 40) 'resumeText': resumeText.trim(),
       // Server runs text-heuristic parse (PDF/DOCX → JSON) when ML parser is off.
       if (parsedCv == null &&
           fileBytes != null &&

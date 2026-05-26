@@ -62,6 +62,25 @@ class ParsedCvProfile {
     );
   }
 
+  /// Portfolio / Mongo `parsedCv` shape (text-heuristic-v1).
+  Map<String, dynamic> toPortfolioJson() => <String, dynamic>{
+        'profile': <String, dynamic>{
+          'name': displayName,
+          'headline': headline,
+          'location': location,
+          'contact': <String, dynamic>{
+            'email': email,
+            'phone': phone,
+          },
+          'summary': summary,
+        },
+        'skills': skills,
+        'experience': experience,
+        'education': education,
+        'projects': projects,
+        'certifications': certifications,
+      };
+
   /// Human-readable preview for Results / post-upload UI.
   String toPreviewMarkdown() {
     final StringBuffer buf = StringBuffer();

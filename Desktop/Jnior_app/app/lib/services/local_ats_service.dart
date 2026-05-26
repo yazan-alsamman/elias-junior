@@ -19,6 +19,7 @@ class LocalAtsResult {
     required this.failures,
     required this.improvements,
     required this.recommendationMessage,
+    required this.extractedText,
     required this.raw,
   });
 
@@ -29,6 +30,8 @@ class LocalAtsResult {
   final List<Map<String, dynamic>> failures;
   final List<String> improvements;
   final String recommendationMessage;
+  /// Full résumé plain text from the local ATS engine (for portfolio heuristics).
+  final String extractedText;
   final Map<String, dynamic> raw;
 
   bool get isPass => decision.toUpperCase() == 'PASS';
@@ -146,6 +149,7 @@ class LocalAtsService {
           .where((String s) => s.trim().isNotEmpty)
           .toList(),
       recommendationMessage: (rec['message'] ?? '').toString(),
+      extractedText: (json['extracted_text'] ?? '').toString().trim(),
       raw: json,
     );
   }
