@@ -1,43 +1,35 @@
 # ATS test CVs (`cv-s/`)
 
-Five PDF résumés in the same **plain-text, ATS-friendly layout** as `sample_cv.pdf` on your Desktop:
+Five PDFs for testing **different ATS scores and failure types** in the app (local ATS on `:8000`).
 
-- Standard sections: **Professional Summary**, **Technical Skills**, **Experience**, **Education**
-- Contact email + phone in the document body (not header/footer only)
-- Selectable text, no images, single-column layout
+| File | What it tests | Typical score | UI (score > 70) |
+|------|----------------|---------------|-----------------|
+| `cv_test_01_score_100_strong.pdf` | Good single-column CV, all sections + contact | **100** | PASS |
+| `cv_test_02_score_65_columns.pdf` | **Two-column** layout | **65** | FAIL |
+| `cv_test_03_score_55_image.pdf` | **Photo / image** in PDF | **55** | FAIL |
+| `cv_test_04_score_70_no_sections.pdf` | **No** Experience/Education/Skills headings, no email/phone | **70** | PASS (borderline) |
+| `cv_test_05_score_15_combo.pdf` | **Image + columns +** no contact/headings | **15** | FAIL |
 
-## Files
-
-| File | Role |
-|------|------|
-| `cv_test_01_jordan_chen.pdf` | Senior Software Engineer |
-| `cv_test_02_priya_sharma.pdf` | Data Engineer |
-| `cv_test_03_marcus_webb.pdf` | Product Manager |
-| `cv_test_04_elena_kowalski.pdf` | DevOps / Platform Engineer |
-| `cv_test_05_sam_okonkwo.pdf` | Junior Software Developer |
+Scores follow the app formula: `100 − 10×failed_rules − 25` if any basic rule fails.
 
 ## Regenerate
 
 ```powershell
-pip install fpdf2 pypdf
+pip install fpdf2
 python cv-s/generate_test_cvs.py
+python cv-s/generate_test_cvs.py --check   # needs ATS on :8000
 ```
 
-With local ATS running on port **8000**:
+## Test in Flutter
 
 ```powershell
 .\start-local-dev.cmd
-python cv-s/generate_test_cvs.py --check
+cd app
+flutter run -d chrome
 ```
 
-## Test in the app
+Upload each PDF from this folder and compare dashboard badges / post-upload ATS card.
 
-1. Start ATS: `.\start-local-dev.cmd` (or `start-ats-uvicorn.cmd`)
-2. `cd app` → `flutter run -d chrome`
-3. Upload any `cv_test_*.pdf` from this folder on the dashboard
+## Layout reference
 
-**Pass/fail in the UI:** score **> 70** = PASS, **≤ 70** = FAIL (rule issues may still appear in recommendations).
-
-## Reference
-
-Template matches `C:\Users\LOQ\Desktop\sample_cv.pdf` (Alex Rivera, 2-page software engineer CV).
+`cv_test_01` follows the same plain-text style as `sample_cv.pdf` on your Desktop. The others intentionally break specific ATS rules (columns, images, missing sections).

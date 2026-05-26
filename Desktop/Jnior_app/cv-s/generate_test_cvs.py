@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate ATS-friendly test CV PDFs in the same layout as sample_cv.pdf
-(plain text, standard headings, contact in body, single-column).
+Generate five ATS test CV PDFs — each targets a different score / failure mode:
+
+  01  Strong single-column (PASS, score 100)
+  02  Two-column layout (B2, score ~75)
+  03  Photo / image embedded (B1, score ~75)
+  04  Missing sections & contact (E4/E6, score ~70)
+  05  Image + columns + no ATS headings (many rules, score ~5–25)
 
 Usage:
-  pip install fpdf2 pypdf
+  pip install fpdf2
   python cv-s/generate_test_cvs.py
-
-Optional — verify scores against local ATS (:8000):
   python cv-s/generate_test_cvs.py --check
 """
 
@@ -16,285 +19,87 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import struct
 import sys
 import urllib.request
-from dataclasses import dataclass
+import zlib
 from pathlib import Path
-from typing import List
+from typing import Callable, List, Tuple
 
 from fpdf import FPDF
 
 ROOT = Path(__file__).resolve().parent
 ATS_URL = os.environ.get("ATS_URL", "http://127.0.0.1:8000/ats-format/check")
 PASS_SCORE_THRESHOLD = 70
+AVATAR_PATH = ROOT / "_assets" / "avatar.png"
 
+# ---------------------------------------------------------------------------
+# Shared content (Alex Rivera–style baseline)
+# ---------------------------------------------------------------------------
 
-@dataclass
-class CvProfile:
-    filename: str
-    name: str
-    title: str
-    email: str
-    phone: str
-    location: str
-    linkedin: str
-    github: str
-    summary: str
-    skills_block: List[str]
-    experience: List[str]
-    education: List[str]
-    projects: List[str]
-    page2_sections: List[tuple[str, List[str]]]
+BASE_NAME = "JORDAN CHEN"
+BASE_TITLE = "Senior Software Engineer"
+BASE_EMAIL = "jordan.chen.dev@email.com"
+BASE_PHONE = "+1 (206) 555-0142"
+BASE_LOCATION = "Seattle, WA, USA"
 
+SUMMARY = (
+    "Results-driven engineer with 8+ years building distributed systems, APIs, "
+    "and data pipelines. Led teams of 4-6 engineers; experienced in Python, Go, "
+    "and cloud platforms (AWS)."
+)
 
-PROFILES: List[CvProfile] = [
-    CvProfile(
-        filename="cv_test_01_jordan_chen.pdf",
-        name="JORDAN CHEN",
-        title="Senior Software Engineer",
-        email="jordan.chen.dev@email.com",
-        phone="+1 (206) 555-0142",
-        location="Seattle, WA, USA",
-        linkedin="linkedin.com/in/jordanchendev",
-        github="github.com/jchen-dev",
-        summary=(
-            "Senior engineer with 9+ years delivering scalable backends, event-driven "
-            "systems, and developer platforms. Led squads of 5 engineers across fintech "
-            "and SaaS. Strong in Python, Java, and AWS with a focus on reliability and "
-            "clear API design."
-        ),
-        skills_block=[
-            "Languages: Python, Java, TypeScript, SQL, Bash",
-            "Frameworks: Spring Boot, FastAPI, React, gRPC",
-            "Data: PostgreSQL, DynamoDB, Redis, Kafka, Spark",
-            "Cloud & DevOps: AWS (EKS, Lambda, RDS), Docker, Terraform, CI/CD",
-            "Practices: SRE, design reviews, incident management, mentoring",
-        ],
-        experience=[
-            "Principal Engineer | Cascade Payments | Remote | Mar 2021 - Present",
-            "- Rebuilt settlement service handling $2B+ annual volume; 99.99% uptime over 18 months.",
-            "- Introduced contract testing and canary deploys; cut production regressions by 45%.",
-            "- Coached two teams on domain-driven design and observability standards.",
-            "Senior Software Engineer | Blue Harbor Tech | Seattle, WA | Jun 2017 - Feb 2021",
-            "- Owned checkout and billing microservices (Java/Spring) on AWS ECS.",
-            "- Migrated legacy MySQL workloads to Aurora with zero-downtime cutover playbook.",
-            "Software Engineer | Lattice Apps | Portland, OR | Aug 2014 - May 2017",
-            "- Built REST APIs and admin tooling in Python/Django for B2B customers.",
-            "- Shipped feature flags and A/B experiment framework used by product team.",
-        ],
-        education=[
-            "M.S. Software Engineering | Carnegie Mellon University | Pittsburgh, PA | 2012 - 2014",
-            "B.S. Computer Science | Oregon State University | Corvallis, OR | 2008 - 2012",
-        ],
-        projects=[
-            "- Maintainer of ledger-diff, an open-source reconciliation CLI (600+ GitHub stars).",
-            "- Internal tech talk series lead on API versioning and backward compatibility.",
-        ],
-        page2_sections=[
-            (
-                "Languages",
-                [
-                    "English (native), Mandarin (fluent), Japanese (basic)",
-                ],
-            ),
-            (
-                "Volunteering",
-                [
-                    "Weekend coding workshops for career switchers (2020-2024).",
-                ],
-            ),
-        ],
-    ),
-    CvProfile(
-        filename="cv_test_02_priya_sharma.pdf",
-        name="PRIYA SHARMA",
-        title="Data Engineer",
-        email="priya.sharma.data@email.com",
-        phone="+1 (312) 555-0287",
-        location="Chicago, IL, USA",
-        linkedin="linkedin.com/in/priyasharmadata",
-        github="github.com/psharma-etl",
-        summary=(
-            "Data engineer specializing in reliable pipelines, warehouse modeling, and "
-            "analytics platforms. 7 years building batch and streaming jobs that power "
-            "executive dashboards and ML feature stores."
-        ),
-        skills_block=[
-            "Languages: Python, SQL, Scala, Bash",
-            "Stack: Airflow, dbt, Spark, Flink, BigQuery, Snowflake",
-            "Orchestration: Airflow, Dagster, GitHub Actions",
-            "Cloud: GCP (BigQuery, Dataflow), AWS (S3, Glue, Redshift)",
-            "Practices: data quality checks, lineage, cost optimization, documentation",
-        ],
-        experience=[
-            "Senior Data Engineer | Meridian Retail Group | Chicago, IL | Jan 2020 - Present",
-            "- Designed lakehouse ingestion for 120+ retail feeds; SLA 99.5% on daily loads.",
-            "- Built dbt marts consumed by 40 analysts; reduced ad-hoc request backlog by 30%.",
-            "Data Engineer | Insight Metrics Co. | Remote | Sep 2016 - Dec 2019",
-            "- Migrated on-prem Hadoop jobs to GCP Dataflow and BigQuery.",
-            "- Implemented Great Expectations suites for critical revenue tables.",
-            "Analytics Engineer | Nova Health Analytics | Boston, MA | Jul 2014 - Aug 2016",
-            "- Created patient cohort dashboards in Looker with HIPAA-aware row policies.",
-        ],
-        education=[
-            "B.S. Statistics & Computer Science | University of Illinois | Urbana, IL | 2010 - 2014",
-        ],
-        projects=[
-            "- Published blog series on incremental dbt models and late-arriving facts.",
-            "- Speaker at local Data Council meetup: Practical data contracts.",
-        ],
-        page2_sections=[
-            (
-                "Certifications",
-                [
-                    "Google Professional Data Engineer (2022)",
-                    "dbt Analytics Engineering Certification (2021)",
-                ],
-            ),
-        ],
-    ),
-    CvProfile(
-        filename="cv_test_03_marcus_webb.pdf",
-        name="MARCUS WEBB",
-        title="Product Manager",
-        email="marcus.webb.pm@email.com",
-        phone="+1 (646) 555-0319",
-        location="New York, NY, USA",
-        linkedin="linkedin.com/in/marcuswebbpm",
-        github="github.com/mwebb-pm",
-        summary=(
-            "Product manager with 8 years shipping B2B SaaS features from discovery to launch. "
-            "Partners with engineering and design to deliver measurable outcomes in growth, "
-            "retention, and platform reliability."
-        ),
-        skills_block=[
-            "Methods: discovery interviews, PRD writing, roadmap planning, OKRs",
-            "Tools: Jira, Figma, Amplitude, Mixpanel, SQL (basic)",
-            "Domains: integrations, billing, onboarding, admin consoles",
-            "Stakeholders: engineering leads, sales, customer success, legal",
-        ],
-        experience=[
-            "Senior Product Manager | Relay Cloud | New York, NY | Apr 2020 - Present",
-            "- Launched partner API program contributing 18% net-new ARR in year one.",
-            "- Reduced enterprise onboarding time from 21 days to 9 days via guided setup.",
-            "Product Manager | Signal Desk | Remote | Jan 2017 - Mar 2020",
-            "- Owned mobile notifications product; improved D7 retention by 12%.",
-            "- Ran beta program with 25 design partners for workflow automation module.",
-            "Associate Product Manager | Urban Stack | Brooklyn, NY | Jun 2014 - Dec 2016",
-            "- Supported marketplace search and ranking experiments with A/B analysis.",
-        ],
-        education=[
-            "M.B.A. | NYU Stern School of Business | New York, NY | 2012 - 2014",
-            "B.A. Economics | Boston University | Boston, MA | 2008 - 2012",
-        ],
-        projects=[
-            "- Side project: PM playbook Notion template (2k+ downloads).",
-        ],
-        page2_sections=[
-            (
-                "Languages",
-                ["English (native), French (professional working proficiency)"],
-            ),
-        ],
-    ),
-    CvProfile(
-        filename="cv_test_04_elena_kowalski.pdf",
-        name="ELENA KOWALSKI",
-        title="DevOps / Platform Engineer",
-        email="elena.kowalski.ops@email.com",
-        phone="+1 (512) 555-0471",
-        location="Austin, TX, USA",
-        linkedin="linkedin.com/in/elenakowalskiops",
-        github="github.com/ekowalski-infra",
-        summary=(
-            "Platform engineer focused on Kubernetes, GitOps, and secure CI/CD. 6+ years "
-            "automating infrastructure for product teams and improving deployment safety."
-        ),
-        skills_block=[
-            "Languages: Python, Go, Bash, HCL",
-            "Platforms: Kubernetes, Helm, Argo CD, Terraform, Ansible",
-            "Observability: Prometheus, Grafana, Loki, PagerDuty",
-            "Security: OIDC, Vault, image scanning, policy-as-code",
-        ],
-        experience=[
-            "Staff Platform Engineer | Orbit Security | Austin, TX | Feb 2021 - Present",
-            "- Standardized golden paths for 12 services; deploy frequency up 3x with fewer incidents.",
-            "- Built self-service preview environments per pull request on EKS.",
-            "DevOps Engineer | ClearPath Logistics | Dallas, TX | May 2018 - Jan 2021",
-            "- Migrated Jenkins pipelines to GitHub Actions with reusable workflow library.",
-            "- Cut cloud spend 22% via rightsizing and S3 lifecycle policies.",
-            "Systems Administrator | Lone Star Hosting | Austin, TX | Aug 2015 - Apr 2018",
-            "- Managed Linux fleet and monitoring for 200+ customer VMs.",
-        ],
-        education=[
-            "B.S. Information Technology | Texas State University | San Marcos, TX | 2011 - 2015",
-        ],
-        projects=[
-            "- Contributor to internal Helm chart library adopted org-wide.",
-        ],
-        page2_sections=[
-            (
-                "Certifications",
-                [
-                    "CKA: Certified Kubernetes Administrator (2023)",
-                    "HashiCorp Terraform Associate (2022)",
-                ],
-            ),
-        ],
-    ),
-    CvProfile(
-        filename="cv_test_05_sam_okonkwo.pdf",
-        name="SAM OKONKWO",
-        title="Junior Software Developer",
-        email="sam.okonkwo.junior@email.com",
-        phone="+1 (404) 555-0523",
-        location="Atlanta, GA, USA",
-        linkedin="linkedin.com/in/samokonkwodev",
-        github="github.com/sokonkwo",
-        summary=(
-            "Recent computer science graduate eager to contribute to full-stack teams. "
-            "Internship experience building web apps, writing tests, and collaborating in Agile sprints."
-        ),
-        skills_block=[
-            "Languages: JavaScript, TypeScript, Python, Java, HTML/CSS",
-            "Frameworks: React, Node.js, Express, Spring Boot",
-            "Tools: Git, GitHub, PostgreSQL, Docker basics, Jest",
-            "Coursework: algorithms, databases, software engineering capstone",
-        ],
-        experience=[
-            "Software Engineering Intern | Brightline Health Tech | Atlanta, GA | May 2025 - Aug 2025",
-            "- Implemented patient intake form validation and unit tests (React + TypeScript).",
-            "- Fixed 15+ bugs in scheduling API integration during sprint demos.",
-            "Teaching Assistant | Georgia Tech | Atlanta, GA | Jan 2025 - May 2025",
-            "- Led weekly labs for Introduction to Object-Oriented Programming (120 students).",
-            "Freelance Web Developer | Self-employed | Remote | Jun 2024 - Dec 2024",
-            "- Built portfolio sites for two local nonprofits using React and Netlify.",
-        ],
-        education=[
-            "B.S. Computer Science | Georgia Institute of Technology | Atlanta, GA | 2021 - 2025",
-            "GPA: 3.6/4.0 | Dean's List (3 semesters)",
-        ],
-        projects=[
-            "- Capstone: campus event finder PWA with Firebase auth and map search.",
-            "- Hackathon winner: accessibility audit browser extension (2024).",
-        ],
-        page2_sections=[
-            (
-                "Languages",
-                ["English (native), Igbo (conversational)"],
-            ),
-        ],
-    ),
+SKILLS = [
+    "Languages: Python, Go, TypeScript, SQL",
+    "Frameworks: FastAPI, Django, React, Node.js",
+    "Cloud: AWS (ECS, Lambda, RDS), Docker, Kubernetes, Terraform",
+]
+
+EXPERIENCE = [
+    "Staff Software Engineer | Northwind Analytics | Remote | Jan 2022 - Present",
+    "- Own ingestion pipeline processing 50M+ events/day; reduced p99 latency by 35%.",
+    "- Designed multi-tenant API gateway (FastAPI) for partner integrations.",
+    "Senior Backend Engineer | Harbor Systems Inc. | Seattle, WA | Mar 2018 - Dec 2021",
+    "- Built microservices in Go and Python on AWS ECS.",
+    "- Introduced OpenTelemetry tracing; cut MTTR by 40%.",
+]
+
+EDUCATION = [
+    "M.S. Computer Science | University of Washington | 2013 - 2015",
+    "B.S. Mathematics & CS | UT Austin | 2009 - 2013",
 ]
 
 
-class AtsCvPdf(FPDF):
-    """Plain-text CV PDF matching sample_cv.pdf style."""
+def _tiny_png(path: Path) -> None:
+    """Minimal valid PNG for ATS image detection (no PIL required)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        return
+    # 32x32 blue square
+    w, h = 32, 32
+    raw = b"".join(
+        b"\x00" + bytes((40, 80, 200)) * w for _ in range(h)
+    )
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(
+            ">I", zlib.crc32(tag + data) & 0xFFFFFFFF
+        )
 
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+    path.write_bytes(png)
+
+
+class AtsCvPdf(FPDF):
     def __init__(self) -> None:
         super().__init__()
-        self.set_auto_page_break(auto=True, margin=18)
-        self.set_margins(left=18, top=18, right=18)
+        self.set_auto_page_break(auto=True, margin=16)
+        self.set_margins(left=18, top=16, right=18)
 
     @property
     def content_width(self) -> float:
@@ -302,64 +107,242 @@ class AtsCvPdf(FPDF):
 
     def section(self, title: str) -> None:
         self.set_x(self.l_margin)
-        self.ln(4)
+        self.ln(3)
         self.set_font("Helvetica", "B", 11)
         self.multi_cell(self.content_width, 6, title)
         self.set_font("Helvetica", "", 9)
         self.set_x(self.l_margin)
         self.multi_cell(self.content_width, 5, "-" * 72)
 
-    def body_lines(self, lines: List[str], line_height: float = 5.5) -> None:
-        self.set_font("Helvetica", "", 10)
+    def body_lines(self, lines: List[str], size: int = 10, lh: float = 5.5) -> None:
+        self.set_font("Helvetica", "", size)
         for line in lines:
             self.set_x(self.l_margin)
-            self.multi_cell(self.content_width, line_height, line)
+            self.multi_cell(self.content_width, lh, line)
+
+    def header_block(
+        self,
+        *,
+        name: str = BASE_NAME,
+        title: str = BASE_TITLE,
+        email: str = BASE_EMAIL,
+        phone: str = BASE_PHONE,
+        include_contact: bool = True,
+    ) -> None:
+        w = self.content_width
+        self.set_font("Helvetica", "B", 14)
+        self.cell(w, 8, name, new_x="LMARGIN", new_y="NEXT")
+        self.set_font("Helvetica", "", 11)
+        self.cell(w, 6, title, new_x="LMARGIN", new_y="NEXT")
+        self.ln(2)
+        if include_contact:
+            self.body_lines(
+                [
+                    f"Email: {email}",
+                    f"Phone: {phone}",
+                    f"Location: {BASE_LOCATION}",
+                    "LinkedIn: linkedin.com/in/jordanchendev",
+                ]
+            )
+            self.ln(2)
 
 
-def build_pdf(profile: CvProfile, out_path: Path) -> None:
+def build_strong(out: Path) -> None:
+    """01 — Best ATS layout: single column, all required headings, full contact."""
     pdf = AtsCvPdf()
     pdf.add_page()
-
-    w = pdf.content_width
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(w, 8, profile.name, new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(w, 6, profile.title, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-
-    contact = [
-        f"Email: {profile.email}",
-        f"Phone: {profile.phone}",
-        f"Location: {profile.location}",
-        f"LinkedIn: {profile.linkedin}",
-        f"GitHub: {profile.github}",
-    ]
-    pdf.body_lines(contact)
-    pdf.ln(2)
-
-    pdf.section("Professional Summary")
-    pdf.body_lines([profile.summary])
-
-    pdf.section("Technical Skills")
-    pdf.body_lines(profile.skills_block)
-
-    pdf.section("Experience")
-    pdf.body_lines(profile.experience)
-
+    pdf.header_block()
+    # Education early so ATS text sample (first ~2600 chars) always includes it.
     pdf.section("Education")
-    pdf.body_lines(profile.education)
+    pdf.body_lines(EDUCATION)
+    pdf.section("Technical Skills")
+    pdf.body_lines(SKILLS)
+    pdf.section("Experience")
+    pdf.body_lines(EXPERIENCE[:3])
+    pdf.section("Professional Summary")
+    pdf.body_lines([SUMMARY[:200]])
+    pdf.output(str(out))
 
-    if profile.projects:
-        pdf.section("Projects & Open Source")
-        pdf.body_lines(profile.projects)
 
-    if profile.page2_sections:
-        pdf.add_page()
-        for title, lines in profile.page2_sections:
-            pdf.section(title)
-            pdf.body_lines(lines)
+def build_two_columns(out: Path) -> None:
+    """02 — Deliberate two-column body (triggers B2_NO_COLUMNS)."""
+    pdf = AtsCvPdf()
+    pdf.add_page()
+    pdf.header_block()
+    pdf.body_lines(
+        [
+            "Education: University of Washington. Skills: Python, AWS, SQL.",
+            "Experience: Northwind Analytics, Harbor Systems.",
+        ]
+    )
+    pdf.ln(2)
 
-    pdf.output(str(out_path))
+    # Right column must sit past mid + split_tol (~362pt on letter page).
+    left_x, right_x = 18.0, 370.0
+    line_h = 4.2
+    y = 58.0
+    pdf.set_font("Helvetica", "", 9)
+
+    left_topics = SKILLS + EXPERIENCE + EDUCATION
+    right_topics = [
+        "Right column filler for ATS two-column detection testing.",
+        "Additional metrics, ownership, and delivery highlights.",
+        "Cross-functional work with product, design, and operations.",
+    ] * 20
+
+    for i in range(48):
+        if y > 270:
+            pdf.add_page()
+            y = 20.0
+        pdf.set_xy(left_x, y)
+        pdf.cell(
+            160,
+            line_h,
+            (left_topics[i % len(left_topics)] if left_topics else "Left col")[:62],
+            new_x="RIGHT",
+            new_y="TOP",
+        )
+        pdf.set_xy(right_x, y)
+        pdf.cell(
+            160,
+            line_h,
+            right_topics[i % len(right_topics)][:62],
+            new_x="RIGHT",
+            new_y="TOP",
+        )
+        y += line_h
+
+    pdf.output(str(out))
+
+
+def build_with_image(out: Path) -> None:
+    """03 — Headshot image + otherwise good single-column CV (triggers B1_NO_IMAGES)."""
+    _tiny_png(AVATAR_PATH)
+    pdf = AtsCvPdf()
+    pdf.add_page()
+    pdf.image(str(AVATAR_PATH), x=18, y=16, w=28, h=28)
+    pdf.set_xy(52, 18)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, BASE_NAME)
+    pdf.set_xy(52, 26)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, BASE_TITLE)
+    pdf.set_xy(18, 48)
+    pdf.body_lines(
+        [
+            f"Email: {BASE_EMAIL}",
+            f"Phone: {BASE_PHONE}",
+            f"Location: {BASE_LOCATION}",
+        ]
+    )
+    pdf.section("Education")
+    pdf.body_lines(EDUCATION)
+    pdf.section("Technical Skills")
+    pdf.body_lines(SKILLS)
+    pdf.section("Experience")
+    pdf.body_lines(EXPERIENCE[:3])
+    pdf.section("Professional Summary")
+    pdf.body_lines([SUMMARY[:180]])
+    pdf.output(str(out))
+
+
+def build_minimal_no_sections(out: Path) -> None:
+    """04 — No standard headings, no email or phone (E6 + 2x E4)."""
+    pdf = AtsCvPdf()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(pdf.content_width, 8, BASE_NAME, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(pdf.content_width, 6, BASE_TITLE, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    pdf.body_lines([f"Location: {BASE_LOCATION}", "Website: jordanchen.example.com"])
+    pdf.ln(4)
+    pdf.section("About Me")
+    pdf.body_lines(
+        [
+            SUMMARY,
+            "Work History: Northwind Analytics 2022-present, Harbor Systems 2018-2021.",
+            "Studied at university; competencies in Python, AWS, APIs, Agile.",
+            "Note: legacy export artifact \ufffd in this line triggers encoding check.",
+        ]
+    )
+    pdf.output(str(out))
+
+
+def build_worst_combo(out: Path) -> None:
+    """05 — Image + two columns + non-standard headings + no contact (very low score)."""
+    _tiny_png(AVATAR_PATH)
+    pdf = AtsCvPdf()
+    pdf.add_page()
+    pdf.image(str(AVATAR_PATH), x=150, y=12, w=40, h=40)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(pdf.content_width, 10, "ALEX GRAPHIC CV", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(pdf.content_width, 6, "Designer / Developer", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+    left_x, right_x = 16.0, 372.0
+    line_h = 4.0
+    y = 62.0
+    pdf.set_font("Helvetica", "", 8)
+    filler_left = [
+        "Profile: creative technologist with portfolio of visual projects.",
+        "Work: built landing pages, brand kits, and social media templates.",
+    ] * 25
+    filler_right = [
+        "Tools: Photoshop, Illustrator, Figma, Canva, HTML/CSS animations.",
+        "Notes: prefer visual layouts over plain text documents.",
+    ] * 25
+    for i in range(50):
+        if y > 275:
+            break
+        pdf.set_xy(left_x, y)
+        pdf.cell(
+            150,
+            line_h,
+            filler_left[i % len(filler_left)][:55],
+            new_x="RIGHT",
+            new_y="TOP",
+        )
+        pdf.set_xy(right_x, y)
+        pdf.cell(
+            150,
+            line_h,
+            filler_right[i % len(filler_right)][:55],
+            new_x="RIGHT",
+            new_y="TOP",
+        )
+        y += line_h
+    pdf.output(str(out))
+
+
+BUILDERS: List[Tuple[str, str, Callable[[Path], None]]] = [
+    (
+        "cv_test_01_score_100_strong.pdf",
+        "Strong ATS layout — expect score 100 / PASS",
+        build_strong,
+    ),
+    (
+        "cv_test_02_score_65_columns.pdf",
+        "Two-column layout — expect score ~65 (B2 columns)",
+        build_two_columns,
+    ),
+    (
+        "cv_test_03_score_55_image.pdf",
+        "Embedded photo — expect score ~55 (B1 + B5 images)",
+        build_with_image,
+    ),
+    (
+        "cv_test_04_score_70_no_sections.pdf",
+        "No ATS headings, no contact, bad encoding — expect score ~70",
+        build_minimal_no_sections,
+    ),
+    (
+        "cv_test_05_score_15_combo.pdf",
+        "Image + columns + no contact — expect score ~15",
+        build_worst_combo,
+    ),
+]
 
 
 def app_score(decision: str, failed_rules: int, failed_basic: bool) -> int:
@@ -371,8 +354,7 @@ def app_score(decision: str, failed_rules: int, failed_basic: bool) -> int:
 
 def check_ats(path: Path) -> dict:
     boundary = "----cvtestboundary"
-    with path.open("rb") as f:
-        data = f.read()
+    data = path.read_bytes()
     body = (
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
@@ -390,41 +372,42 @@ def check_ats(path: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="POST each PDF to local ATS (:8000) and print scores",
-    )
+    parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
     ROOT.mkdir(parents=True, exist_ok=True)
-    print(f"Writing PDFs to {ROOT}")
+    _tiny_png(AVATAR_PATH)
+    print(f"Writing PDFs to {ROOT}\n")
 
-    for profile in PROFILES:
-        out = ROOT / profile.filename
-        build_pdf(profile, out)
-        size_kb = out.stat().st_size // 1024
-        print(f"  OK  {profile.filename} ({size_kb} KB)")
+    for filename, desc, builder in BUILDERS:
+        out = ROOT / filename
+        builder(out)
+        print(f"  {filename}")
+        print(f"    {desc} ({out.stat().st_size // 1024} KB)")
 
     if args.check:
-        print(f"\nChecking ATS at {ATS_URL} ...")
-        for profile in PROFILES:
-            path = ROOT / profile.filename
+        print(f"\nATS check ({ATS_URL}):\n")
+        for filename, _, _ in BUILDERS:
+            path = ROOT / filename
             try:
                 raw = check_ats(path)
+                fails = raw.get("failures") or []
+                rule_ids = [f.get("rule_id", "?") for f in fails[:6]]
                 decision = str(raw.get("decision", "FAIL"))
-                failed = int(raw.get("failed_rules_count", 0))
+                n = int(raw.get("failed_rules_count", 0))
                 basic = bool(raw.get("failed_basic"))
-                score = app_score(decision, failed, basic)
+                score = app_score(decision, n, basic)
                 ui = "PASS" if score > PASS_SCORE_THRESHOLD else "FAIL"
                 print(
-                    f"  {profile.filename}: engine={decision} score={score} ui={ui} "
-                    f"rules_failed={failed}"
+                    f"  {filename}\n"
+                    f"    score={score} ui={ui} engine={decision} "
+                    f"failed={n} basic={basic}\n"
+                    f"    rules: {', '.join(rule_ids) or 'none'}\n"
                 )
             except Exception as exc:
-                print(f"  {profile.filename}: ATS check skipped ({exc})")
+                print(f"  {filename}: skipped ({exc})\n")
 
-    print("\nDone. Upload any file from cv-s/ in the app with ATS on :8000 running.")
+    print("Done.")
     return 0
 
 
