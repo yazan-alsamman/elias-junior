@@ -38,6 +38,28 @@ ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
 
 
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from a .env file into os.environ (only if not already set).
+
+    Keeps things dependency-free so we don't force python-dotenv on every install.
+    """
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+# Load cv-parser/.env (HF_TOKEN, CV_API_MODEL_ID, …) before any HF call.
+_load_env_file(ROOT / ".env")
+
+
 class ParseTextBody(BaseModel):
     resume_text: str = Field(..., min_length=1, description="Plain-text CV content")
     max_new_tokens: int = Field(512, ge=64, le=4096)
@@ -73,6 +95,17 @@ async def lifespan(app: FastAPI):
     load_4bit = _env_bool("CV_API_LOAD_IN_4BIT", False)
 
     hf_tok = cv_main.huggingface_hub_token()
+    if hf_tok is True and not str(model_id).strip().lower().startswith(("c:", "d:", "e:", "/", ".", "~")):
+        raise RuntimeError(
+            "\n[cv-parser] No Hugging Face token configured.\n"
+            "  meta-llama/Llama-3.2-3B-Instruct is a gated repo and requires:\n"
+            "    1) Request access on https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct\n"
+            "    2) Create a Read token at https://huggingface.co/settings/tokens\n"
+            "    3) Add it to cv-parser/.env:\n"
+            "         HF_TOKEN=hf_xxxxx...\n"
+            "  (alternatively set CV_API_MODEL_ID to a local model folder).\n"
+        )
+
     tokenizer = cv_main.load_pretrained_tokenizer(model_id, hf_tok)
     cv_main.ensure_llama3_chat_template(tokenizer)
     gen_eos = cv_main.generation_eos_token_ids(tokenizer)

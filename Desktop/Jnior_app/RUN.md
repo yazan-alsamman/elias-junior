@@ -31,20 +31,27 @@ You should see two new windows:
 
 > The parser takes a while to load the model the first time. ATS works immediately.
 
-### One-time CV parser setup
+### One-time CV parser setup (Hugging Face)
 
-The parser needs a Hugging Face token and a LoRA adapter folder.
+`meta-llama/Llama-3.2-3B-Instruct` is a **gated** model on Hugging Face.
+You must do this once:
 
-Set these in PowerShell **before** running `start-local-dev.cmd`:
+1. Open <https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct> and click
+   "Request access" (Meta usually approves in minutes).
+2. Create a Read token at <https://huggingface.co/settings/tokens>.
+3. Copy `cv-parser/.env.example` to `cv-parser/.env` and paste the token:
 
-```powershell
-$env:HF_TOKEN = "hf_xxx..."
-$env:CV_API_MODEL_ID = "meta-llama/Llama-3.2-3B-Instruct"
-$env:CV_API_ADAPTER_PATH = "lora-resume-archive"   # folder inside cv-parser/
-$env:CV_API_LOAD_IN_4BIT = "1"
-```
+   ```
+   HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
+   CV_API_MODEL_ID=meta-llama/Llama-3.2-3B-Instruct
+   CV_API_ADAPTER_PATH=lora-resume-archive
+   CV_API_LOAD_IN_4BIT=1
+   ```
 
-If you do not set these, ATS still works — the parser will simply be skipped.
+The parser auto-loads `cv-parser/.env` at startup, so you only do this once.
+
+If you skip it, the ATS check still works — the parser will just fail to start
+and the app shows a "CV parser skipped" toast on upload (placeholder portfolio).
 
 ---
 
