@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:app/common/api_config.dart';
+import 'package:app/common/platform_file_bytes.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/model/cv_document.dart';
 import 'package:app/controller/pipeline_controller.dart';
@@ -199,6 +201,7 @@ class CVController extends GetxController {
       type: FileType.custom,
       allowedExtensions: const <String>['pdf', 'docx'],
       withData: true,
+      withReadStream: true,
       dialogTitle: 'Select CV (PDF or Word)',
     );
     if (result == null || result.files.isEmpty) {
@@ -257,16 +260,18 @@ class CVController extends GetxController {
     }
 
     try {
+      final Uint8List fileBytes = await readPlatformFileBytes(file);
+
       // Step 1 — run ATS engine and CV parser **directly** on the user's PC, in parallel.
       final String ext = name.toLowerCase().split('.').last;
       final Future<LocalAtsResult> atsFuture =
           LocalAtsService.instance.analyzeFile(
-        fileBytes: file.bytes!,
+        fileBytes: fileBytes,
         fileName: name,
       );
       final Future<Map<String, dynamic>?> parseFuture = ext == 'pdf'
           ? LocalCvParserService.instance.parsePdf(
-              fileBytes: file.bytes!,
+              fileBytes: fileBytes,
               fileName: name,
             )
           : Future<Map<String, dynamic>?>.value(null);
