@@ -30,6 +30,13 @@ class ApiConfig {
     defaultValue: '',
   );
 
+  /// Set false to skip Llama CV parser during upload (ATS-only mode).
+  /// Re-enable later with `--dart-define=CV_PARSER_ENABLED=true`.
+  static const bool cvParserEnabled = bool.fromEnvironment(
+    'CV_PARSER_ENABLED',
+    defaultValue: false,
+  );
+
   /// Hostinger Express backend. Always remote (default) unless overridden.
   static String get baseUrl {
     if (_fromEnvBase.isNotEmpty) return _fromEnvBase;

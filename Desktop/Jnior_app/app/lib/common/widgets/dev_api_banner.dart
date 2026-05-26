@@ -4,7 +4,6 @@ import 'package:app/common/api_config.dart';
 import 'package:app/common/app_colors.dart';
 import 'package:app/common/app_typography.dart';
 import 'package:app/services/local_ats_service.dart';
-import 'package:app/services/local_cv_parser_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -32,7 +31,6 @@ class _DevApiBannerState extends State<DevApiBanner> {
 
   Future<void> _loadLocalServices() async {
     final bool atsOk = await LocalAtsService.instance.ping();
-    final bool parserOk = await LocalCvParserService.instance.ping();
     bool nodeOk = false;
     try {
       final http.Response res = await http
@@ -51,9 +49,9 @@ class _DevApiBannerState extends State<DevApiBanner> {
       _atsLine = atsOk
           ? 'Local ATS OK (${ApiConfig.atsBaseUrl})'
           : 'Local ATS offline — run .\\start-local-dev.cmd';
-      _parserLine = parserOk
-          ? 'Local CV parser OK (${ApiConfig.cvParserBaseUrl})'
-          : 'CV parser offline (optional)';
+      _parserLine = ApiConfig.cvParserEnabled
+          ? 'CV parser enabled (not started in this build)'
+          : 'CV parser paused — ATS-only uploads';
       _nodeLine = nodeOk
           ? 'Local Node OK (${ApiConfig.localStorageFallbackUrl}) — saves to Mongo'
           : 'Local Node offline — start .\\start-local-dev.cmd (needed if Hostinger 404)';

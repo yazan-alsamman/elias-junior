@@ -10,7 +10,6 @@ import 'package:app/controller/portfolio_controller.dart';
 import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
 import 'package:app/services/local_ats_service.dart';
-import 'package:app/services/local_cv_parser_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -25,7 +24,7 @@ enum PostUploadStep {
 class CVController extends GetxController {
   static const List<String> progressMessages = <String>[
     'Reading your CV…',
-    'ATS check + CV parser (parallel)…',
+    'Running ATS format check…',
     'Saving results to your profile…',
     'Almost done…',
   ];
@@ -262,27 +261,19 @@ class CVController extends GetxController {
     try {
       final Uint8List fileBytes = await readPlatformFileBytes(file);
 
-      // Step 1 — run ATS engine and CV parser **directly** on the user's PC, in parallel.
+      // ATS only (local Uvicorn :8000). CV parser is paused — see ApiConfig.cvParserEnabled.
       final String ext = name.toLowerCase().split('.').last;
-      final Future<LocalAtsResult> atsFuture =
-          LocalAtsService.instance.analyzeFile(
-        fileBytes: fileBytes,
-        fileName: name,
-      );
-      final Future<Map<String, dynamic>?> parseFuture = ext == 'pdf'
-          ? LocalCvParserService.instance.parsePdf(
-              fileBytes: fileBytes,
-              fileName: name,
-            )
-          : Future<Map<String, dynamic>?>.value(null);
 
-      LocalAtsResult atsResult;
+      final LocalAtsResult atsResult;
       try {
-        atsResult = await atsFuture;
+        atsResult = await LocalAtsService.instance.analyzeFile(
+          fileBytes: fileBytes,
+          fileName: name,
+        );
       } catch (atsErr) {
         AuroraSnack.error(
           'ATS engine offline',
-          'Start it locally: .\\start-local-dev.cmd  (URL: ${ApiConfig.atsBaseUrl})\n$atsErr',
+          'Start ATS: .\\start-local-dev.cmd  (URL: ${ApiConfig.atsBaseUrl})\n$atsErr',
           duration: const Duration(seconds: 8),
         );
         isUploading = false;
@@ -290,21 +281,12 @@ class CVController extends GetxController {
         return;
       }
 
-      Map<String, dynamic>? parsedCv;
-      try {
-        parsedCv = await parseFuture;
-      } catch (_) {
-        parsedCv = null; // CV parser is optional.
-      }
-
-      // Step 2 — send results to Hostinger to save (no file upload to the server).
+      // Save ATS results to Hostinger (or local Node :3003 if route missing).
       final Map<String, dynamic> saved =
           await CareerApiService.to.saveLocalAnalysis(
         originalFileName: name,
         fileType: ext,
         ats: atsResult.raw,
-        parsedCv: parsedCv,
-        parseEngine: parsedCv != null ? 'llama-lora-cv-parser-v1' : '',
       );
 
       final CVDocument uploaded = CVDocument.fromUploadResponse(saved);
@@ -321,17 +303,18 @@ class CVController extends GetxController {
       if (Get.isRegistered<PipelineController>()) {
         unawaited(Get.find<PipelineController>().fetchPipelineData());
       }
-
-      if (parsedCv == null) {
-        AuroraSnack.brand(
-          'CV parser skipped',
-          'ATS score saved. CV parser was not reachable (Uvicorn :8001) or file was not PDF — '
-              'portfolio will use placeholder fields.',
-          duration: const Duration(seconds: 6),
-        );
-      }
     } catch (e) {
-      AuroraSnack.error('Upload / ATS', '$e');
+      final String msg = e.toString();
+      final bool notFound =
+          msg.contains('Not found') || msg.contains('404');
+      AuroraSnack.error(
+        'Upload / ATS',
+        notFound
+            ? 'Could not save results. Start Node: .\\start-local-dev.cmd '
+                '(needs http://127.0.0.1:3003). ATS on :8000 must also be running.'
+            : msg,
+        duration: Duration(seconds: notFound ? 8 : 5),
+      );
     }
 
     isUploading = false;
