@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:app/common/api_config.dart';
 import 'package:app/common/app_colors.dart';
 import 'package:app/common/app_typography.dart';
@@ -5,6 +7,7 @@ import 'package:app/services/local_ats_service.dart';
 import 'package:app/services/local_cv_parser_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 /// Debug-only: shows Hostinger storage API + local ATS/parser reachability.
 class DevApiBanner extends StatefulWidget {
@@ -17,6 +20,7 @@ class DevApiBanner extends StatefulWidget {
 class _DevApiBannerState extends State<DevApiBanner> {
   String? _atsLine;
   String? _parserLine;
+  String? _nodeLine;
 
   @override
   void initState() {
@@ -29,14 +33,30 @@ class _DevApiBannerState extends State<DevApiBanner> {
   Future<void> _loadLocalServices() async {
     final bool atsOk = await LocalAtsService.instance.ping();
     final bool parserOk = await LocalCvParserService.instance.ping();
+    bool nodeOk = false;
+    try {
+      final http.Response res = await http
+          .get(Uri.parse('${ApiConfig.localStorageFallbackUrl}/health'))
+          .timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final Map<String, dynamic>? body =
+            jsonDecode(res.body) as Map<String, dynamic>?;
+        nodeOk = body?['ok'] == true;
+      }
+    } catch (_) {
+      nodeOk = false;
+    }
     if (!mounted) return;
     setState(() {
       _atsLine = atsOk
-          ? 'Local ATS OK (${ApiConfig.atsBaseUrl}) — real scores on upload'
-          : 'Local ATS offline — run .\\start-local-dev.cmd (${ApiConfig.atsBaseUrl})';
+          ? 'Local ATS OK (${ApiConfig.atsBaseUrl})'
+          : 'Local ATS offline — run .\\start-local-dev.cmd';
       _parserLine = parserOk
           ? 'Local CV parser OK (${ApiConfig.cvParserBaseUrl})'
-          : 'CV parser offline (${ApiConfig.cvParserBaseUrl}) — ATS still works';
+          : 'CV parser offline (optional)';
+      _nodeLine = nodeOk
+          ? 'Local Node OK (${ApiConfig.localStorageFallbackUrl}) — saves to Mongo'
+          : 'Local Node offline — start .\\start-local-dev.cmd (needed if Hostinger 404)';
     });
   }
 
@@ -72,6 +92,13 @@ class _DevApiBannerState extends State<DevApiBanner> {
             const SizedBox(height: 2),
             Text(
               _parserLine!,
+              style: AppType.bodySmall.copyWith(color: AuroraDark.textMuted),
+            ),
+          ],
+          if (_nodeLine != null) ...<Widget>[
+            const SizedBox(height: 2),
+            Text(
+              _nodeLine!,
               style: AppType.bodySmall.copyWith(color: AuroraDark.textMuted),
             ),
           ],

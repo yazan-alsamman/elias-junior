@@ -84,8 +84,8 @@ class CareerApiService extends GetxService {
     return decoded!;
   }
 
-  /// Send ATS + CV parser results that were computed locally on the user's PC.
-  /// Hostinger stores them in Mongo and returns the new CV document.
+  /// Send ATS + CV parser results computed locally. Tries Hostinger first; if the
+  /// route is missing (HTTP 404), retries local Node on :3003 (same MongoDB).
   Future<Map<String, dynamic>> saveLocalAnalysis({
     required String originalFileName,
     required String fileType,
@@ -93,8 +93,49 @@ class CareerApiService extends GetxService {
     Map<String, dynamic>? parsedCv,
     String parseEngine = '',
   }) async {
+    final List<String> bases = <String>[
+      ApiConfig.baseUrl,
+      if (ApiConfig.baseUrl != ApiConfig.localStorageFallbackUrl)
+        ApiConfig.localStorageFallbackUrl,
+    ];
+
+    Object? lastError;
+    for (final String base in bases) {
+      try {
+        return await _postSaveAnalysis(
+          baseUrl: base,
+          originalFileName: originalFileName,
+          fileType: fileType,
+          ats: ats,
+          parsedCv: parsedCv,
+          parseEngine: parseEngine,
+        );
+      } catch (e) {
+        lastError = e;
+        final String msg = e.toString();
+        final bool is404 =
+            msg.contains('404') || msg.contains('Not found');
+        if (!is404 || base == bases.last) {
+          rethrow;
+        }
+      }
+    }
+    throw Exception(lastError ?? 'Save analysis failed');
+  }
+
+  Future<Map<String, dynamic>> _postSaveAnalysis({
+    required String baseUrl,
+    required String originalFileName,
+    required String fileType,
+    required Map<String, dynamic> ats,
+    Map<String, dynamic>? parsedCv,
+    String parseEngine = '',
+  }) async {
+    final Uri uri = Uri.parse(
+      '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/api/cv/documents/save-analysis',
+    );
     final http.Response res = await http.post(
-      _uri('/api/cv/documents/save-analysis'),
+      uri,
       headers: _auth.authorizedJsonHeaders(),
       body: jsonEncode(<String, dynamic>{
         'originalFileName': originalFileName,
@@ -104,10 +145,16 @@ class CareerApiService extends GetxService {
         if (parseEngine.isNotEmpty) 'parseEngine': parseEngine,
       }),
     );
-    final Map<String, dynamic>? body =
-        jsonDecode(res.body) as Map<String, dynamic>?;
+    Map<String, dynamic>? body;
+    try {
+      body = jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      body = null;
+    }
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw Exception(body?['error'] as String? ?? 'Save analysis failed');
+      final String err = body?['error'] as String? ??
+          'HTTP ${res.statusCode} from $uri';
+      throw Exception(err);
     }
     return body!;
   }

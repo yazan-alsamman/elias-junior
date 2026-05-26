@@ -61,6 +61,13 @@ class ApiConfig {
     }
   }
 
+  /// Local Node API used when Hostinger has not deployed save-analysis yet.
+  /// Same MongoDB Atlas as production when backend/.env is configured.
+  static String get localStorageFallbackUrl {
+    if (_fromEnvBase.isNotEmpty && isLocalDev) return baseUrl;
+    return _localLoopback(3003);
+  }
+
   /// True when [baseUrl] points at a local Node instance (rare; we default to Hostinger).
   static bool get isLocalDev =>
       baseUrl.contains('10.0.2.2') ||
