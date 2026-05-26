@@ -263,7 +263,6 @@ def build_minimal_no_sections(out: Path) -> None:
             SUMMARY,
             "Work History: Northwind Analytics 2022-present, Harbor Systems 2018-2021.",
             "Studied at university; competencies in Python, AWS, APIs, Agile.",
-            "Note: legacy export artifact \ufffd in this line triggers encoding check.",
         ]
     )
     pdf.output(str(out))
@@ -333,8 +332,8 @@ BUILDERS: List[Tuple[str, str, Callable[[Path], None]]] = [
         build_with_image,
     ),
     (
-        "cv_test_04_score_70_no_sections.pdf",
-        "No ATS headings, no contact, bad encoding — expect score ~70",
+        "cv_test_04_score_80_no_sections.pdf",
+        "No ATS headings, no email/phone — expect score ~80",
         build_minimal_no_sections,
     ),
     (

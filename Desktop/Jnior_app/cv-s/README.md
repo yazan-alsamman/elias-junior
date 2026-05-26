@@ -7,7 +7,7 @@ Five PDFs for testing **different ATS scores and failure types** in the app (loc
 | `cv_test_01_score_100_strong.pdf` | Good single-column CV, all sections + contact | **100** | PASS |
 | `cv_test_02_score_65_columns.pdf` | **Two-column** layout | **65** | FAIL |
 | `cv_test_03_score_55_image.pdf` | **Photo / image** in PDF | **55** | FAIL |
-| `cv_test_04_score_70_no_sections.pdf` | **No** Experience/Education/Skills headings, no email/phone | **70** | PASS (borderline) |
+| `cv_test_04_score_80_no_sections.pdf` | **No** standard headings, **no** email/phone | **80** | PASS |
 | `cv_test_05_score_15_combo.pdf` | **Image + columns +** no contact/headings | **15** | FAIL |
 
 Scores follow the app formula: `100 − 10×failed_rules − 25` if any basic rule fails.
