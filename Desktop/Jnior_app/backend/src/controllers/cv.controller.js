@@ -11,15 +11,60 @@ const {
 const { analyzeExtractedText, inferSpecialization } = require('../services/atsHeuristic');
 const { analyzeUploadedCvFile } = require('../services/atsAnalyzeUpload');
 const {
-  parseCvFileViaParser,
   previewTextFromParsedCv,
   contactFromParsedCv,
 } = require('../services/cvParserClient');
+const { parseCvFileForPortfolio } = require('../services/cvParsePipeline');
+const { textToPortfolioJson } = require('../services/cvHeuristicParse');
 const {
   parseStoredParsedCv,
   envelopeForStorage,
   portfolioSnapshotFromParsedCv,
+  isPortfolioShape,
 } = require('../services/parsedCvStore');
+
+async function resolveParsedCvInput({
+  parsedCv,
+  parseEngine,
+  resumeText,
+  fileBase64,
+  fileName,
+  fileBuffer,
+}) {
+  if (parsedCv && isPortfolioShape(parsedCv)) {
+    return {
+      parsedCv,
+      parseEngine: String(parseEngine || 'llama-lora-cv-parser-v1'),
+    };
+  }
+
+  if (resumeText && String(resumeText).trim().length >= 20) {
+    const fromText = textToPortfolioJson(String(resumeText));
+    if (fromText) {
+      return { parsedCv: fromText, parseEngine: 'text-heuristic-v1' };
+    }
+  }
+
+  let buffer = fileBuffer;
+  if (!buffer && fileBase64) {
+    try {
+      buffer = Buffer.from(String(fileBase64), 'base64');
+    } catch (_e) {
+      buffer = null;
+    }
+  }
+  if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0 && fileName) {
+    const outcome = await parseCvFileForPortfolio({
+      fileBuffer: buffer,
+      fileName: String(fileName),
+    });
+    if (outcome?.parsedCv) {
+      return outcome;
+    }
+  }
+
+  return { parsedCv: null, parseEngine: 'unavailable' };
+}
 
 async function cascadeDeleteAnalysisForDocument(documentId) {
   const profiles = await CVParsedProfile.find({ documentId });
@@ -183,9 +228,18 @@ async function getDocument(req, res) {
       .sort({ _id: -1 })
       .exec();
     const parsedCv = parseStoredParsedCv(profile);
+    let parseEngine = 'text-heuristic-v1';
+    if (profile?.rawJson) {
+      try {
+        const envelope = JSON.parse(profile.rawJson);
+        if (envelope?.engine) parseEngine = String(envelope.engine);
+      } catch (_e) {
+        /* legacy */
+      }
+    }
     return res.json({
       document: serializeCv(doc, ats),
-      ...(parsedCv ? { parsedCv, parseEngine: 'llama-lora-cv-parser-v1' } : {}),
+      ...(parsedCv ? { parsedCv, parseEngine } : {}),
     });
   } catch (err) {
     console.error(err);
@@ -214,7 +268,8 @@ async function getParsedProfile(req, res) {
     const parsedCv = parseStoredParsedCv(profile);
     if (!parsedCv) {
       return res.status(404).json({
-        error: 'Parsed CV JSON not available yet. Upload with CV parser running on port 8001.',
+        error:
+          'Parsed CV JSON not available yet. Re-upload your CV (text extraction runs on the server).',
       });
     }
 
@@ -366,18 +421,10 @@ async function uploadAndAnalyzeFile(req, res) {
       return res.status(400).json({ error: 'Only PDF and DOCX files are supported' });
     }
 
-    // ATS format check + CV parser (Llama/LoRA JSON) run in parallel on the same file buffer.
     const fileBuffer = req.file.buffer;
     const [atsOutcome, parseOutcome] = await Promise.all([
       analyzeUploadedCvFile({ fileBuffer, fileName: originalFileName }),
-      (async () => {
-        try {
-          return await parseCvFileViaParser({ fileBuffer, fileName: originalFileName });
-        } catch (parseErr) {
-          console.warn('[cv-parser] parse failed:', parseErr.message);
-          return null;
-        }
-      })(),
+      parseCvFileForPortfolio({ fileBuffer, fileName: originalFileName }),
     ]);
 
     const {
@@ -515,8 +562,10 @@ async function saveLocalAnalysis(req, res) {
       originalFileName,
       fileType,
       ats: atsRaw,
-      parsedCv = null,
-      parseEngine = '',
+      parsedCv: parsedCvBody = null,
+      parseEngine: parseEngineBody = '',
+      resumeText = '',
+      fileBase64 = '',
     } = req.body || {};
 
     const fileName = String(originalFileName || '').trim();
@@ -596,6 +645,14 @@ async function saveLocalAnalysis(req, res) {
       failures,
     };
 
+    const { parsedCv, parseEngine } = await resolveParsedCvInput({
+      parsedCv: parsedCvBody,
+      parseEngine: parseEngineBody,
+      resumeText,
+      fileBase64,
+      fileName,
+    });
+
     const previewText = parsedCv ? previewTextFromParsedCv(parsedCv) : '';
     const contact = parsedCv
       ? contactFromParsedCv(parsedCv)
@@ -629,7 +686,7 @@ async function saveLocalAnalysis(req, res) {
       specializationDetected: spec,
       rawJson: JSON.stringify(
         parsedCv
-          ? envelopeForStorage(parsedCv, parseEngine || 'llama-lora-cv-parser-v1')
+          ? envelopeForStorage(parsedCv, parseEngine)
           : { engine: 'fastapi-ats-format-v1', score, issues },
       ),
     });
@@ -644,11 +701,15 @@ async function saveLocalAnalysis(req, res) {
       }),
     });
 
+    const row = serializeCv(doc, ats);
+    row.profileId = profile._id.toString();
+    row.hasParsedCv = Boolean(parsedCv);
+
     return res.status(201).json({
-      document: serializeCv(doc, ats),
+      document: row,
       profileId: profile._id.toString(),
       parsedCv,
-      parseEngine: parseEngine || (parsedCv ? 'llama-lora-cv-parser-v1' : 'unavailable'),
+      parseEngine: parseEngine || (parsedCv ? 'text-heuristic-v1' : 'unavailable'),
       atsEngine: 'fastapi-ats-format-v1',
       atsAvailable: true,
     });

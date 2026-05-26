@@ -103,6 +103,8 @@ class CareerApiService extends GetxService {
         ats: ats,
         parsedCv: parsedCv,
         parseEngine: parseEngine,
+        fileBytes: fileBytes,
+        fileName: fileName ?? originalFileName,
       );
     } catch (e) {
       final String msg = e.toString();
@@ -139,6 +141,8 @@ class CareerApiService extends GetxService {
             ats: ats,
             parsedCv: parsedCv,
             parseEngine: parseEngine,
+            fileBytes: fileBytes,
+            fileName: fileName ?? originalFileName,
           );
         } catch (localErr) {
           final String localMsg = localErr.toString();
@@ -174,20 +178,29 @@ class CareerApiService extends GetxService {
     required Map<String, dynamic> ats,
     Map<String, dynamic>? parsedCv,
     String parseEngine = '',
+    Uint8List? fileBytes,
+    String? fileName,
   }) async {
     final Uri uri = Uri.parse(
       '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/api/cv/documents/save-analysis',
     );
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'originalFileName': originalFileName,
+      'fileType': fileType,
+      'ats': ats,
+      if (parsedCv != null) 'parsedCv': parsedCv,
+      if (parseEngine.isNotEmpty) 'parseEngine': parseEngine,
+      // Server runs text-heuristic parse (PDF/DOCX → JSON) when ML parser is off.
+      if (parsedCv == null &&
+          fileBytes != null &&
+          fileBytes.isNotEmpty &&
+          fileBytes.length <= 6 * 1024 * 1024)
+        'fileBase64': base64Encode(fileBytes),
+    };
     final http.Response res = await http.post(
       uri,
       headers: _auth.authorizedJsonHeaders(),
-      body: jsonEncode(<String, dynamic>{
-        'originalFileName': originalFileName,
-        'fileType': fileType,
-        'ats': ats,
-        'parsedCv': ?parsedCv,
-        if (parseEngine.isNotEmpty) 'parseEngine': parseEngine,
-      }),
+      body: jsonEncode(payload),
     );
     Map<String, dynamic>? body;
     try {

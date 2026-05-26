@@ -8,9 +8,13 @@ Flutter app ──auth/storage──► Hostinger:  https://rosybrown-jackal-732
             ──CV parse──────► local PC :8001   (Llama 3.2 + LoRA)
 ```
 
-The Hostinger backend never reaches your PC. The app does the ATS check and CV
-parsing directly against your local Uvicorn services, then sends both results to
-Hostinger which saves them in MongoDB (used by the Portfolio page later).
+The Hostinger backend never reaches your PC for ATS. The app runs the ATS check
+locally (`:8000`), then sends ATS + the **CV file (base64)** to Hostinger.
+The server extracts PDF/DOCX text and builds portfolio JSON with a **text
+heuristic** (`text-heuristic-v1`) — no Llama parser required.
+
+Optional: enable `CV_PARSER_URL` on the server for ML parsing; otherwise the
+heuristic runs automatically.
 
 ---
 
@@ -93,12 +97,13 @@ PC's LAN IP. Allow inbound TCP 8000 and 8001 in Windows Firewall.
 2. Go to Dashboard → Upload CV → choose a real PDF.
 3. The app will:
    - Send the file to `http://127.0.0.1:8000/ats-format/check` → real ATS score.
-   - Send the file to `http://127.0.0.1:8001/parse/pdf` → JSON profile (skills, projects…).
-   - Send both results to Hostinger `POST /api/cv/documents/save-analysis`.
-4. The post-upload screen shows **Decision: PASS/FAIL**, **score = 100** for PASS or
-   `100 − 10·rules − 25 (if basic failed)` for FAIL.
-5. Open Portfolio — the preview should fill with your real name, summary, skills,
-   and project titles from the parser JSON.
+   - POST Hostinger `save-analysis` with ATS JSON + **file base64** → server text
+     extract → portfolio JSON stored in Mongo (`text-heuristic-v1`).
+4. The post-upload screen shows PASS/FAIL from score (> 70 = pass).
+5. Open **Portfolio** — preview fills from stored JSON (name, skills, experience).
+
+> Llama parser on `:8001` is optional. Deploy latest `backend/` to Hostinger so
+> `save-analysis` includes text extraction.
 
 ### Quick manual probes
 
