@@ -31,6 +31,12 @@ if not exist ".env" (
   exit /b 1
 )
 
+call check-hf-env.cmd
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
 if not defined CV_API_ADAPTER_PATH set CV_API_ADAPTER_PATH=lora-resume-archive
 if not defined CV_API_LOAD_IN_4BIT set CV_API_LOAD_IN_4BIT=1
 

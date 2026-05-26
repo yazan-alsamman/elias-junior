@@ -56,8 +56,56 @@ def _load_env_file(path: Path) -> None:
             os.environ[key] = val
 
 
-# Load cv-parser/.env (HF_TOKEN, CV_API_MODEL_ID, …) before any HF call.
 _load_env_file(ROOT / ".env")
+
+_PLACEHOLDER_TOKENS = frozenset(
+    {
+        "",
+        "hf_replace_me",
+        "your_huggingface_token",
+        "hf_xxx",
+        "hf_xxxxx",
+    }
+)
+
+
+def _require_valid_hf_token(token: str | bool, model_id: str) -> str:
+    """Return a usable token string or raise with setup instructions."""
+    is_local = str(model_id).strip().lower().startswith(
+        ("c:", "d:", "e:", "/", ".", "~")
+    )
+    if is_local:
+        return token if isinstance(token, str) else ""
+
+    if token is True or not isinstance(token, str):
+        raise RuntimeError(
+            "\n[cv-parser] No Hugging Face token configured.\n"
+            "  Edit cv-parser/.env and set HF_TOKEN=hf_... (Read token).\n"
+            "  Also request access:\n"
+            "  https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct\n"
+        )
+
+    cleaned = token.strip()
+    lowered = cleaned.lower()
+    if cleaned in _PLACEHOLDER_TOKENS or "replace" in lowered or lowered.startswith("your_"):
+        raise RuntimeError(
+            "\n[cv-parser] HF_TOKEN in cv-parser/.env is still a placeholder.\n"
+            "  1) Open cv-parser/.env in a text editor\n"
+            "  2) Replace hf_replace_me with your real token from:\n"
+            "     https://huggingface.co/settings/tokens  (Read scope)\n"
+            "  3) Request model access (one-time):\n"
+            "     https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct\n"
+            "  4) Re-run start-local-dev.cmd\n"
+            "\n  ATS (:8000) and Node (:3003) work without the CV parser.\n"
+        )
+
+    if not cleaned.startswith("hf_") or len(cleaned) < 20:
+        raise RuntimeError(
+            "\n[cv-parser] HF_TOKEN looks invalid (must start with hf_ and be ~37+ chars).\n"
+            "  Update cv-parser/.env with a Read token from huggingface.co/settings/tokens\n"
+        )
+
+    return cleaned
 
 
 class ParseTextBody(BaseModel):
@@ -94,19 +142,25 @@ async def lifespan(app: FastAPI):
     adapter_path = Path(adapter).expanduser() if adapter else None
     load_4bit = _env_bool("CV_API_LOAD_IN_4BIT", False)
 
-    hf_tok = cv_main.huggingface_hub_token()
-    if hf_tok is True and not str(model_id).strip().lower().startswith(("c:", "d:", "e:", "/", ".", "~")):
-        raise RuntimeError(
-            "\n[cv-parser] No Hugging Face token configured.\n"
-            "  meta-llama/Llama-3.2-3B-Instruct is a gated repo and requires:\n"
-            "    1) Request access on https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct\n"
-            "    2) Create a Read token at https://huggingface.co/settings/tokens\n"
-            "    3) Add it to cv-parser/.env:\n"
-            "         HF_TOKEN=hf_xxxxx...\n"
-            "  (alternatively set CV_API_MODEL_ID to a local model folder).\n"
-        )
+    hf_tok = _require_valid_hf_token(cv_main.huggingface_hub_token(), model_id)
 
-    tokenizer = cv_main.load_pretrained_tokenizer(model_id, hf_tok)
+    try:
+        tokenizer = cv_main.load_pretrained_tokenizer(model_id, hf_tok)
+    except OSError as err:
+        msg = str(err)
+        if "gated repo" in msg.lower() or "401" in msg:
+            raise RuntimeError(
+                "\n[cv-parser] Hugging Face rejected access to the Llama model.\n"
+                "  Your token is set, but either:\n"
+                "    • the token is wrong/expired, OR\n"
+                "    • you have not been approved for meta-llama/Llama-3.2-3B-Instruct yet\n"
+                "  Fix:\n"
+                "    1) https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct → Request access\n"
+                "    2) Create a new Read token → paste into cv-parser/.env as HF_TOKEN=...\n"
+                "    3) Re-run start-local-dev.cmd\n"
+                "\n  ATS (:8000) and Node (:3003) still work without the parser.\n"
+            ) from err
+        raise
     cv_main.ensure_llama3_chat_template(tokenizer)
     gen_eos = cv_main.generation_eos_token_ids(tokenizer)
 

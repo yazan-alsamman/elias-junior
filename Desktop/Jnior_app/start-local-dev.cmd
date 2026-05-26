@@ -18,7 +18,7 @@ start "Uvicorn - ATS :8000" cmd /k "cd /d "%ATS_DIR%" && pip install -r requirem
 
 timeout /t 2 /nobreak >nul
 
-echo [2/3] CV Parser (Uvicorn + Llama 3.2 LoRA) on http://127.0.0.1:8001 ...
+echo [2/3] CV Parser (optional — needs HF token in cv-parser\.env) ...
 start "Uvicorn - CV Parser :8001" cmd /k "call "%ROOT%start-cv-parser-uvicorn.cmd""
 
 timeout /t 2 /nobreak >nul
