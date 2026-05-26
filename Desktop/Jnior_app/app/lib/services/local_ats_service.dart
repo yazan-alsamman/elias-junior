@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:app/common/api_config.dart';
+import 'package:app/model/ats_check_report.dart';
 import 'package:http/http.dart' as http;
 
 /// Direct multipart call to the local Uvicorn ATS rule engine.
@@ -42,6 +43,34 @@ class LocalAtsResult {
 
   List<String> get issueList =>
       failures.map((Map<String, dynamic> f) => (f['issue'] ?? '').toString()).where((String s) => s.isNotEmpty).toList();
+
+  /// Map local FastAPI output to the report shape the Flutter UI expects.
+  ATSCheckReport toAtsCheckReport() {
+    return ATSCheckReport(
+      score: score,
+      status: isPass ? 'PASS' : 'FAIL',
+      checkedAt: DateTime.now(),
+      keywordsChecked: failedRulesCount,
+      keywordsTotal: failedRulesCount + (isPass ? 0 : 1),
+      formatScore: score,
+      sectionMatch: isPass
+          ? 'All format rules passed'
+          : '$failedRulesCount format rule(s) failed',
+      estimatedSecondsLeft: 0,
+      missingKeywords: issueList,
+      recommendations: improvements,
+      suitabilityHeadline: recommendationMessage.isNotEmpty
+          ? recommendationMessage
+          : (isPass ? 'ATS format check passed' : 'ATS format issues found'),
+      issuesSummary:
+          'Local ATS — $decision, $failedRulesCount failed rule(s)',
+      engine: 'fastapi-ats-format-v1',
+      decision: decision,
+      failedRulesCount: failedRulesCount,
+      failedBasic: failedBasic,
+      failures: failures.map(AtsRuleFailure.fromJson).toList(),
+    );
+  }
 }
 
 class LocalAtsService {

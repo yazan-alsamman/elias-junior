@@ -84,44 +84,88 @@ class CareerApiService extends GetxService {
     return decoded!;
   }
 
-  /// Send ATS + CV parser results computed locally. Tries Hostinger first; if the
-  /// route is missing (HTTP 404), retries local Node on :3003 (same MongoDB).
+  /// Save local ATS results to Hostinger. If `save-analysis` is missing (404),
+  /// falls back to `upload-analyze` on Hostinger (same login token).
   Future<Map<String, dynamic>> saveLocalAnalysis({
     required String originalFileName,
     required String fileType,
     required Map<String, dynamic> ats,
     Map<String, dynamic>? parsedCv,
     String parseEngine = '',
+    Uint8List? fileBytes,
+    String? fileName,
   }) async {
-    final List<String> bases = <String>[
-      ApiConfig.baseUrl,
-      if (ApiConfig.baseUrl != ApiConfig.localStorageFallbackUrl)
-        ApiConfig.localStorageFallbackUrl,
-    ];
-
-    Object? lastError;
-    for (final String base in bases) {
-      try {
-        return await _postSaveAnalysis(
-          baseUrl: base,
-          originalFileName: originalFileName,
-          fileType: fileType,
-          ats: ats,
-          parsedCv: parsedCv,
-          parseEngine: parseEngine,
+    try {
+      return await _postSaveAnalysis(
+        baseUrl: ApiConfig.baseUrl,
+        originalFileName: originalFileName,
+        fileType: fileType,
+        ats: ats,
+        parsedCv: parsedCv,
+        parseEngine: parseEngine,
+      );
+    } catch (e) {
+      final String msg = e.toString();
+      if (_isAuthError(msg)) {
+        throw Exception(
+          'Session expired — log out and sign in again, then re-upload your CV.',
         );
-      } catch (e) {
-        lastError = e;
-        final String msg = e.toString();
-        final bool is404 =
-            msg.contains('404') || msg.contains('Not found');
-        if (!is404 || base == bases.last) {
+      }
+
+      final bool is404 = msg.contains('404') || msg.contains('Not found');
+
+      // Hostinger upload-analyze (same JWT) when save-analysis not deployed yet.
+      if (is404 &&
+          fileBytes != null &&
+          fileName != null &&
+          fileName.isNotEmpty) {
+        final Map<String, dynamic> uploaded = await uploadFileAndAnalyze(
+          fileBytes: fileBytes,
+          fileName: fileName,
+        );
+        uploaded['_saveVia'] = 'upload-analyze';
+        return uploaded;
+      }
+
+      // Optional: local Node only when explicitly enabled AND JWT matches.
+      if (is404 &&
+          ApiConfig.useLocalNodeSaveFallback &&
+          ApiConfig.baseUrl != ApiConfig.localStorageFallbackUrl) {
+        try {
+          return await _postSaveAnalysis(
+            baseUrl: ApiConfig.localStorageFallbackUrl,
+            originalFileName: originalFileName,
+            fileType: fileType,
+            ats: ats,
+            parsedCv: parsedCv,
+            parseEngine: parseEngine,
+          );
+        } catch (localErr) {
+          final String localMsg = localErr.toString();
+          if (_isAuthError(localMsg)) {
+            throw Exception(
+              'Local Node rejected your login token. Sign in with API_BASE=http://127.0.0.1:3003 '
+              'or set the same JWT_SECRET on Hostinger and local backend/.env.',
+            );
+          }
           rethrow;
         }
       }
+
+      if (is404) {
+        throw Exception(
+          'Server missing save-analysis route. Deploy latest backend to Hostinger '
+          'or run Node on :3003 with LOCAL_NODE_SAVE=true and matching JWT_SECRET.',
+        );
+      }
+      rethrow;
     }
-    throw Exception(lastError ?? 'Save analysis failed');
   }
+
+  bool _isAuthError(String msg) =>
+      msg.contains('Invalid token') ||
+      msg.contains('Unauthorized') ||
+      msg.contains('401');
 
   Future<Map<String, dynamic>> _postSaveAnalysis({
     required String baseUrl,

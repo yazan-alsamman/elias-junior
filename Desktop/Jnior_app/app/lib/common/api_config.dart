@@ -68,12 +68,19 @@ class ApiConfig {
     }
   }
 
-  /// Local Node API used when Hostinger has not deployed save-analysis yet.
-  /// Same MongoDB Atlas as production when backend/.env is configured.
+  /// Local Node on :3003 — only used when [useLocalNodeSaveFallback] is true.
   static String get localStorageFallbackUrl {
     if (_fromEnvBase.isNotEmpty && isLocalDev) return baseUrl;
     return _localLoopback(3003);
   }
+
+  /// Retry save on local Node after Hostinger 404. Off by default because the
+  /// Hostinger JWT will not validate on local Node (different JWT_SECRET).
+  /// Enable with `--dart-define=LOCAL_NODE_SAVE=true` after syncing JWT_SECRET.
+  static const bool useLocalNodeSaveFallback = bool.fromEnvironment(
+    'LOCAL_NODE_SAVE',
+    defaultValue: false,
+  );
 
   /// True when [baseUrl] points at a local Node instance (rare; we default to Hostinger).
   static bool get isLocalDev =>

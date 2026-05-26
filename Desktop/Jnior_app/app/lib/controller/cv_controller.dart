@@ -281,15 +281,19 @@ class CVController extends GetxController {
         return;
       }
 
-      // Save ATS results to Hostinger (or local Node :3003 if route missing).
       final Map<String, dynamic> saved =
           await CareerApiService.to.saveLocalAnalysis(
         originalFileName: name,
         fileType: ext,
         ats: atsResult.raw,
+        fileBytes: fileBytes,
+        fileName: name,
       );
 
-      final CVDocument uploaded = CVDocument.fromUploadResponse(saved);
+      CVDocument uploaded = CVDocument.fromUploadResponse(saved);
+      if (saved['_saveVia'] == 'upload-analyze') {
+        uploaded = uploaded.copyWith(report: atsResult.toAtsCheckReport());
+      }
       documents.add(uploaded);
       if (Get.isRegistered<PortfolioController>()) {
         final PortfolioController port = Get.find<PortfolioController>();
@@ -304,16 +308,10 @@ class CVController extends GetxController {
         unawaited(Get.find<PipelineController>().fetchPipelineData());
       }
     } catch (e) {
-      final String msg = e.toString();
-      final bool notFound =
-          msg.contains('Not found') || msg.contains('404');
       AuroraSnack.error(
         'Upload / ATS',
-        notFound
-            ? 'Could not save results. Start Node: .\\start-local-dev.cmd '
-                '(needs http://127.0.0.1:3003). ATS on :8000 must also be running.'
-            : msg,
-        duration: Duration(seconds: notFound ? 8 : 5),
+        e.toString().replaceFirst('Exception: ', ''),
+        duration: const Duration(seconds: 8),
       );
     }
 
