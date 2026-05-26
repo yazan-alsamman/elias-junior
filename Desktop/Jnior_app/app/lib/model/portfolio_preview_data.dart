@@ -269,6 +269,39 @@ class PortfolioPreviewData {
     );
   }
 
+  /// Shown when GitHub is linked but CV JSON / text is not available yet (no fake names).
+  static PortfolioPreviewData fromAwaitingCv({
+    required String githubUsername,
+    required PortfolioTemplate template,
+    required List<String> projectNames,
+    Map<String, String>? projectOgImagesByName,
+    Map<String, String>? projectCustomImagesByName,
+  }) {
+    final List<String> projs =
+        projectNames.map((String p) => p.trim()).where((String p) => p.isNotEmpty).toList();
+    return PortfolioPreviewData(
+      githubUsername: githubUsername,
+      template: template,
+      projectNames: projs,
+      projectOgImagesByName:
+          projectOgImagesByName ?? const <String, String>{},
+      projectCustomImagesByName:
+          projectCustomImagesByName ?? const <String, String>{},
+      displayName: 'Your CV profile',
+      headline: 'Upload your CV on the Dashboard',
+      bio:
+          'We could not load parsed CV data yet. Re-upload your PDF or DOCX after signing in '
+          'so your real name, skills, and experience replace this message.',
+      email: '',
+      phone: '',
+      linkedinUrl: '',
+      location: '',
+      skills: const <String>[
+        'Re-upload CV to populate skills',
+      ],
+    );
+  }
+
   static PortfolioPreviewData fromDummy({
     required String githubUsername,
     required PortfolioTemplate template,

@@ -7,6 +7,7 @@ import 'package:app/model/parsed_cv_profile.dart';
 import 'package:app/model/portfolio_preview_data.dart';
 import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
+import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/github_og_image_service.dart';
 import 'package:app/services/portfolio_custom_image_codec.dart';
 import 'package:file_picker/file_picker.dart';
@@ -60,9 +61,6 @@ class PortfolioController extends GetxController {
   void onInit() {
     super.onInit();
     unawaited(_hydrateGithub());
-    if (Get.find<AuthApiService>().isLoggedIn) {
-      unawaited(hydrateFromLatestCv());
-    }
   }
 
   Future<void> _hydrateGithub() async {
@@ -200,7 +198,7 @@ class PortfolioController extends GetxController {
     _applyParsedToPortfolio(parsed);
   }
 
-  /// Load name, bio, skills from Mongo (`text-heuristic-v1` or ML parser JSON).
+  /// Load name, bio, skills from stored JSON or parsed résumé text.
   Future<void> hydrateFromLatestCv() async {
     if (!Get.find<AuthApiService>().isLoggedIn) {
       return;
@@ -209,29 +207,74 @@ class PortfolioController extends GetxController {
       return;
     }
     final CVController cv = Get.find<CVController>();
-    final CVDocument? chosen = cv.latestDocument;
-    if (chosen?.id == null) {
+    if (cv.documents.isEmpty) {
+      await cv.loadFromApi();
+    }
+    if (cv.documents.isEmpty) {
       return;
     }
-    try {
-      ParsedCvProfile? parsed = chosen!.parsedProfile;
-      if (parsed == null || !parsed.hasPortfolioData) {
+
+    final List<CVDocument> sorted = List<CVDocument>.from(cv.documents)
+      ..sort(
+        (CVDocument a, CVDocument b) => b.uploadedAt.compareTo(a.uploadedAt),
+      );
+
+    ParsedCvProfile? parsed;
+    for (final CVDocument doc in sorted) {
+      parsed = await _resolveParsedForDocument(doc);
+      if (parsed != null && parsed.hasPortfolioData) {
+        break;
+      }
+    }
+
+    if (parsed != null && parsed.hasPortfolioData) {
+      _applyParsedToPortfolio(parsed);
+      return;
+    }
+
+    if (showPreview && displayUsername.isNotEmpty) {
+      AuroraSnack.warning(
+        'CV data missing',
+        'Re-upload your CV on the Dashboard so we can extract your profile text.',
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
+  Future<ParsedCvProfile?> _resolveParsedForDocument(CVDocument doc) async {
+    ParsedCvProfile? parsed = doc.parsedProfile;
+    if (parsed != null && parsed.hasPortfolioData) {
+      return parsed;
+    }
+
+    if (doc.id != null) {
+      try {
         final Map<String, dynamic> body =
-            await CareerApiService.to.fetchParsedProfile(chosen.id!);
+            await CareerApiService.to.fetchParsedProfile(doc.id!);
         final Object? raw = body['parsedCv'];
         if (raw is Map<String, dynamic>) {
           parsed = ParsedCvProfile.fromJson(raw);
+          if (parsed.hasPortfolioData) {
+            return parsed;
+          }
         }
-      }
-      if (parsed == null || !parsed.hasPortfolioData) {
-        return;
-      }
-      _applyParsedToPortfolio(parsed);
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[portfolio] hydrateFromLatestCv: $e');
+      } catch (_) {
+        /* try text fallback */
       }
     }
+
+    final String text = doc.extractedText.trim();
+    if (text.length > 80 && !_isPlaceholderExtractedText(text)) {
+      return CvTextHeuristic.parseResumeText(text);
+    }
+    return null;
+  }
+
+  bool _isPlaceholderExtractedText(String text) {
+    final String low = text.toLowerCase();
+    return low.startsWith('uploaded cv:') ||
+        low.startsWith('uploaded for ats') ||
+        low == 'pending';
   }
 
   void _applyParsedToPortfolio(ParsedCvProfile parsed) {
@@ -268,6 +311,16 @@ class PortfolioController extends GetxController {
     if (parsed != null && parsed.hasPortfolioData) {
       previewData = PortfolioPreviewData.fromParsedProfile(
         parsed: parsed,
+        githubUsername: displayUsername,
+        template: selectedTemplate,
+        projectNames: List<String>.from(projectNames),
+        projectOgImagesByName: Map<String, String>.from(projectOgImageUrls),
+        projectCustomImagesByName: const <String, String>{},
+      );
+      return;
+    }
+    if (Get.find<AuthApiService>().isLoggedIn) {
+      previewData = PortfolioPreviewData.fromAwaitingCv(
         githubUsername: displayUsername,
         template: selectedTemplate,
         projectNames: List<String>.from(projectNames),
@@ -363,9 +416,12 @@ class PortfolioController extends GetxController {
 
     loading = false;
     showPreview = true;
-    await hydrateFromLatestCv();
-    _rebuildPreviewDataOnly();
     update();
+    await hydrateFromLatestCv();
+    if (_parsedFromCv == null || !_parsedFromCv!.hasPortfolioData) {
+      _rebuildPreviewDataOnly();
+      update();
+    }
     _scheduleOgResolution();
   }
 
@@ -433,7 +489,7 @@ class PortfolioController extends GetxController {
                   Map<String, String>.from(projectOgImageUrls),
               projectCustomImagesByName: customSnap,
             )
-          : PortfolioPreviewData.fromDummy(
+          : PortfolioPreviewData.fromAwaitingCv(
               githubUsername: gh,
               template: selectedTemplate,
               projectNames: List<String>.from(projectNames),

@@ -16,6 +16,7 @@ const {
 } = require('../services/cvParserClient');
 const { parseCvFileForPortfolio } = require('../services/cvParsePipeline');
 const { textToPortfolioJson } = require('../services/cvHeuristicParse');
+const { extractTextFromUpload } = require('../services/cvTextExtract');
 const {
   parseStoredParsedCv,
   envelopeForStorage,
@@ -166,7 +167,11 @@ async function listDocuments(req, res) {
       const row = serializeCv(full, ats);
       if (profile) {
         row.profileId = profile._id.toString();
-        row.hasParsedCv = Boolean(parseStoredParsedCv(profile));
+        const parsedCv = parseStoredParsedCv(profile);
+        row.hasParsedCv = Boolean(parsedCv);
+        if (parsedCv) {
+          row.parsedCv = parsedCv;
+        }
       }
       out.push(row);
     }
@@ -645,12 +650,36 @@ async function saveLocalAnalysis(req, res) {
       failures,
     };
 
+    let fileBuffer = null;
+    if (fileBase64) {
+      try {
+        fileBuffer = Buffer.from(String(fileBase64), 'base64');
+      } catch (_e) {
+        fileBuffer = null;
+      }
+    }
+
+    let fullExtractedText = String(resumeText || '').trim();
+    if (
+      fileBuffer &&
+      Buffer.isBuffer(fileBuffer) &&
+      fileBuffer.length > 0 &&
+      fullExtractedText.length < 40
+    ) {
+      try {
+        fullExtractedText = await extractTextFromUpload(fileBuffer, fileName);
+      } catch (extractErr) {
+        console.warn('[cv.saveLocalAnalysis] text extract:', extractErr.message);
+      }
+    }
+
     const { parsedCv, parseEngine } = await resolveParsedCvInput({
       parsedCv: parsedCvBody,
       parseEngine: parseEngineBody,
-      resumeText,
+      resumeText: fullExtractedText || resumeText,
       fileBase64,
       fileName,
+      fileBuffer,
     });
 
     const previewText = parsedCv ? previewTextFromParsedCv(parsedCv) : '';
@@ -658,11 +687,16 @@ async function saveLocalAnalysis(req, res) {
       ? contactFromParsedCv(parsedCv)
       : { fullName: '', email: '' };
 
+    const extractedText =
+      fullExtractedText.length >= 40
+        ? fullExtractedText.slice(0, 50000)
+        : previewText || `Uploaded CV: ${fileName}`;
+
     const doc = await CVDocument.create({
       userId: req.userId,
       originalFileName: fileName,
       fileType: ext,
-      extractedText: previewText || `Uploaded CV: ${fileName}`,
+      extractedText,
       documentStage: 'analyzed',
       generatedBy: 'user',
       fileUrl: '',
@@ -704,6 +738,9 @@ async function saveLocalAnalysis(req, res) {
     const row = serializeCv(doc, ats);
     row.profileId = profile._id.toString();
     row.hasParsedCv = Boolean(parsedCv);
+    if (parsedCv) {
+      row.parsedCv = parsedCv;
+    }
 
     return res.status(201).json({
       document: row,
@@ -721,6 +758,35 @@ async function saveLocalAnalysis(req, res) {
   }
 }
 
+/**
+ * POST multipart file → text extract + heuristic JSON (no Mongo write).
+ * Used by Flutter before save-analysis when Hostinger save route lacks fileBase64 handling.
+ */
+async function extractParseFile(req, res) {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'file is required (multipart field: file)' });
+    }
+    const fileName = String(req.file.originalname || 'cv.pdf').trim();
+    const outcome = await parseCvFileForPortfolio({
+      fileBuffer: req.file.buffer,
+      fileName,
+    });
+    if (!outcome?.parsedCv) {
+      return res.status(422).json({
+        error: 'Could not extract enough text from this file to build a profile',
+      });
+    }
+    return res.json({
+      parsedCv: outcome.parsedCv,
+      parseEngine: outcome.engine,
+    });
+  } catch (err) {
+    console.error('[cv.extractParseFile]', err);
+    return res.status(500).json({ error: err.message || 'Parse failed' });
+  }
+}
+
 module.exports = {
   listDocuments,
   createDocument,
@@ -728,6 +794,7 @@ module.exports = {
   getParsedProfile,
   deleteDocument,
   analyzeDocument,
+  extractParseFile,
   uploadAndAnalyzeFile,
   saveLocalAnalysis,
 };

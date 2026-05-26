@@ -55,6 +55,34 @@ class CareerApiService extends GetxService {
     return body!;
   }
 
+  /// Extract PDF/DOCX text and build portfolio JSON on the server (no save).
+  Future<Map<String, dynamic>> extractParseCvFile({
+    required Uint8List fileBytes,
+    required String fileName,
+  }) async {
+    final Uri uri = _uri('/api/cv/documents/extract-parse');
+    final http.MultipartRequest req = http.MultipartRequest('POST', uri);
+    final String? token = _auth.token;
+    if (token != null && token.isNotEmpty) {
+      req.headers['Authorization'] = 'Bearer $token';
+    }
+    req.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        fileBytes,
+        filename: fileName,
+      ),
+    );
+    final http.StreamedResponse streamed = await req.send();
+    final String body = await streamed.stream.bytesToString();
+    final Map<String, dynamic>? decoded =
+        jsonDecode(body) as Map<String, dynamic>?;
+    if (streamed.statusCode != 200) {
+      throw Exception(decoded?['error'] as String? ?? 'CV extract-parse failed');
+    }
+    return decoded!;
+  }
+
   /// Upload file → Node ATS check (+ optional CV parser on :8001).
   /// Response: `{ document, profileId?, parsedCv?, parseEngine? }`.
   Future<Map<String, dynamic>> uploadFileAndAnalyze({

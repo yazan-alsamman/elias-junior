@@ -5,10 +5,12 @@ import 'package:app/common/api_config.dart';
 import 'package:app/common/platform_file_bytes.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/model/cv_document.dart';
+import 'package:app/model/parsed_cv_profile.dart';
 import 'package:app/controller/pipeline_controller.dart';
 import 'package:app/controller/portfolio_controller.dart';
 import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
+import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/local_ats_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -68,13 +70,33 @@ class CVController extends GetxController {
     }
   }
 
+  CVDocument _enrichDocumentWithParse(CVDocument doc) {
+    if (doc.parsedProfile != null && doc.parsedProfile!.hasPortfolioData) {
+      return doc;
+    }
+    final String text = doc.extractedText.trim();
+    if (text.length > 80 &&
+        !text.toLowerCase().startsWith('uploaded cv:') &&
+        !text.toLowerCase().startsWith('uploaded for ats')) {
+      final ParsedCvProfile? parsed = CvTextHeuristic.parseResumeText(text);
+      if (parsed != null && parsed.hasPortfolioData) {
+        return doc.copyWithParsed(parsed);
+      }
+    }
+    return doc;
+  }
+
   /// Load CV list from Express + MongoDB.
   Future<void> loadFromApi() async {
     try {
       final List<CVDocument> list = await CareerApiService.to.documentsList();
+      final List<CVDocument> enriched = <CVDocument>[];
+      for (final CVDocument doc in list) {
+        enriched.add(_enrichDocumentWithParse(doc));
+      }
       documents
         ..clear()
-        ..addAll(list);
+        ..addAll(enriched);
       update();
       if (Get.isRegistered<PortfolioController>()) {
         final PortfolioController port = Get.find<PortfolioController>();
@@ -287,6 +309,24 @@ class CVController extends GetxController {
         return;
       }
 
+      Map<String, dynamic>? parsedCvMap;
+      String parseEngine = 'text-heuristic-v1';
+      try {
+        final Map<String, dynamic> extracted =
+            await CareerApiService.to.extractParseCvFile(
+          fileBytes: fileBytes,
+          fileName: name,
+        );
+        final Object? raw = extracted['parsedCv'];
+        if (raw is Map<String, dynamic>) {
+          parsedCvMap = raw;
+          parseEngine =
+              (extracted['parseEngine'] as String?) ?? parseEngine;
+        }
+      } catch (_) {
+        /* save-analysis may still parse via fileBase64 on server */
+      }
+
       final Map<String, dynamic> saved =
           await CareerApiService.to.saveLocalAnalysis(
         originalFileName: name,
@@ -294,11 +334,26 @@ class CVController extends GetxController {
         ats: atsResult.raw,
         fileBytes: fileBytes,
         fileName: name,
+        parsedCv: parsedCvMap,
+        parseEngine: parseEngine,
       );
 
       CVDocument uploaded = CVDocument.fromUploadResponse(saved);
       if (saved['_saveVia'] == 'upload-analyze') {
         uploaded = uploaded.copyWith(report: atsResult.toAtsCheckReport());
+      }
+      if ((uploaded.parsedProfile == null ||
+              !uploaded.parsedProfile!.hasPortfolioData) &&
+          uploaded.extractedText.length > 80) {
+        final ParsedCvProfile? fromText =
+            CvTextHeuristic.parseResumeText(uploaded.extractedText);
+        if (fromText != null) {
+          uploaded = uploaded.copyWithParsed(fromText);
+        }
+      } else if (parsedCvMap != null && uploaded.parsedProfile == null) {
+        uploaded = uploaded.copyWithParsed(
+          ParsedCvProfile.fromJson(parsedCvMap),
+        );
       }
       documents.add(uploaded);
       if (Get.isRegistered<PortfolioController>()) {
