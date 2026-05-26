@@ -557,15 +557,18 @@ async function saveLocalAnalysis(req, res) {
         ? 100
         : Math.min(99, Math.max(5, 100 - failedRulesCount * 10 - (failedBasic ? 25 : 0)));
 
+    const PASS_SCORE_THRESHOLD = 70;
+    const scoreDecision = score > PASS_SCORE_THRESHOLD ? 'PASS' : 'FAIL';
+
     const atsFields = {
       score,
-      status: decision === 'PASS' ? 'PASS' : 'FAIL',
+      status: scoreDecision,
       extractedTextLength: 0,
       keywordsChecked: failedRulesCount,
-      keywordsTotal: failedRulesCount + (decision === 'PASS' ? 0 : 1),
+      keywordsTotal: failedRulesCount + (scoreDecision === 'PASS' ? 0 : 1),
       formatScore: score,
       sectionMatch:
-        decision === 'PASS'
+        scoreDecision === 'PASS'
           ? 'All format rules passed'
           : `${failedRulesCount} format rule${failedRulesCount === 1 ? '' : 's'} failed`,
       estimatedSecondsLeft: 0,
@@ -575,19 +578,19 @@ async function saveLocalAnalysis(req, res) {
         .slice(0, 8),
       suitabilityHeadline:
         String(recommendation.message || '').trim() ||
-        (decision === 'PASS'
+        (scoreDecision === 'PASS'
           ? 'ATS format check passed'
           : failedBasic
             ? 'Critical ATS format issues found'
             : 'ATS format check found issues to fix'),
       issuesSummary: `Local Uvicorn ATS (${fileName}) — ${decision}, ${failedRulesCount} failed rule(s)`,
-      severity: decision === 'PASS' ? 'low' : failedBasic ? 'high' : 'medium',
+      severity: scoreDecision === 'PASS' ? 'low' : failedBasic ? 'high' : 'medium',
       canAutoFix: false,
       autoFixApplied: false,
       failureReason: issues.join(' | '),
       templateId: 'fastapi-ats-format-v1',
       engine: 'fastapi-ats-format-v1',
-      decision,
+      decision: scoreDecision,
       failedRulesCount,
       failedBasic,
       failures,

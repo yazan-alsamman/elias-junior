@@ -46,14 +46,17 @@ class LocalAtsResult {
 
   /// Map local FastAPI output to the report shape the Flutter UI expects.
   ATSCheckReport toAtsCheckReport() {
+    final int computedScore = score;
+    final String scoreDecision =
+        computedScore > ATSCheckReport.passScoreThreshold ? 'PASS' : 'FAIL';
     return ATSCheckReport(
-      score: score,
-      status: isPass ? 'PASS' : 'FAIL',
+      score: computedScore,
+      status: scoreDecision,
       checkedAt: DateTime.now(),
       keywordsChecked: failedRulesCount,
-      keywordsTotal: failedRulesCount + (isPass ? 0 : 1),
-      formatScore: score,
-      sectionMatch: isPass
+      keywordsTotal: failedRulesCount + (scoreDecision == 'PASS' ? 0 : 1),
+      formatScore: computedScore,
+      sectionMatch: scoreDecision == 'PASS'
           ? 'All format rules passed'
           : '$failedRulesCount format rule(s) failed',
       estimatedSecondsLeft: 0,
@@ -61,11 +64,13 @@ class LocalAtsResult {
       recommendations: improvements,
       suitabilityHeadline: recommendationMessage.isNotEmpty
           ? recommendationMessage
-          : (isPass ? 'ATS format check passed' : 'ATS format issues found'),
+          : (scoreDecision == 'PASS'
+              ? 'ATS format check passed'
+              : 'ATS format issues found'),
       issuesSummary:
           'Local ATS — $decision, $failedRulesCount failed rule(s)',
       engine: 'fastapi-ats-format-v1',
-      decision: decision,
+      decision: scoreDecision,
       failedRulesCount: failedRulesCount,
       failedBasic: failedBasic,
       failures: failures.map(AtsRuleFailure.fromJson).toList(),

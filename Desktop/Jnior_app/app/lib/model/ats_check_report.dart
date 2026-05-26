@@ -42,6 +42,15 @@ class ATSCheckReport {
   final bool failedBasic;
   final List<AtsRuleFailure> failures;
 
+  /// ATS pass threshold: score above this counts as success.
+  static const int passScoreThreshold = 70;
+
+  /// True when [score] is above [passScoreThreshold].
+  bool get isPassByScore => score > passScoreThreshold;
+
+  /// PASS/FAIL derived from [score], not raw engine rules.
+  String get scoreDecision => isPassByScore ? 'PASS' : 'FAIL';
+
   bool get isRealAts => engine == 'fastapi-ats-format-v1';
 
   bool get isUnavailable => engine == 'ats-unavailable';
@@ -66,24 +75,10 @@ class ATSCheckReport {
     return false;
   }
 
-  /// Pill text on dashboard CV rows (legacy rows used "Parsed" for low scores).
-  String get listBadgeLabel {
-    if (decision.isNotEmpty) {
-      return decision;
-    }
-    if (status == 'Parsed') {
-      return 'FAIL';
-    }
-    if (status == 'FAIL') {
-      return 'Parsed';
-    }
-    return status;
-  }
+  /// Pill text on dashboard CV rows — driven by ATS score threshold.
+  String get listBadgeLabel => scoreDecision;
 
-  bool get listBadgeIsPositive {
-    final String label = listBadgeLabel.toUpperCase();
-    return label == 'PASS' || label == 'PARSED' || label == 'OPTIMIZED';
-  }
+  bool get listBadgeIsPositive => isPassByScore;
 
   factory ATSCheckReport.fromJson(Map<String, dynamic> j) {
     final List<String> miss = (j['missingKeywords'] as List<dynamic>?)
