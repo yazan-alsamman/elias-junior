@@ -185,7 +185,7 @@ class CareerApiService extends GetxService {
         'originalFileName': originalFileName,
         'fileType': fileType,
         'ats': ats,
-        if (parsedCv != null) 'parsedCv': parsedCv,
+        'parsedCv': ?parsedCv,
         if (parseEngine.isNotEmpty) 'parseEngine': parseEngine,
       }),
     );
