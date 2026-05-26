@@ -76,6 +76,12 @@ class CVController extends GetxController {
         ..clear()
         ..addAll(list);
       update();
+      if (Get.isRegistered<PortfolioController>()) {
+        final PortfolioController port = Get.find<PortfolioController>();
+        unawaited(
+          port.hydrateFromLatestCv().then((_) => port.refreshPreviewFromCv()),
+        );
+      }
       // Keep Pipeline page in sync with the latest CV.
       if (Get.isRegistered<PipelineController>()) {
         unawaited(Get.find<PipelineController>().fetchPipelineData());
@@ -297,8 +303,13 @@ class CVController extends GetxController {
       documents.add(uploaded);
       if (Get.isRegistered<PortfolioController>()) {
         final PortfolioController port = Get.find<PortfolioController>();
-        if (uploaded.parsedProfile != null) {
+        if (uploaded.parsedProfile != null &&
+            uploaded.parsedProfile!.hasPortfolioData) {
           port.applyParsedProfile(uploaded.parsedProfile!);
+        } else if (uploaded.id != null) {
+          unawaited(
+            port.hydrateFromLatestCv().then((_) => port.refreshPreviewFromCv()),
+          );
         }
       }
       postUploadDocumentIndex = documents.length - 1;
