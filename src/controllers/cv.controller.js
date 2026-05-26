@@ -9,7 +9,7 @@ const {
   Portfolio,
 } = require('../models');
 const { analyzeExtractedText, inferSpecialization } = require('../services/atsHeuristic');
-const { analyzeCvFileViaFastapi } = require('../services/atsFastapiClient');
+const { analyzeUploadedCvFile } = require('../services/atsAnalyzeUpload');
 
 async function cascadeDeleteAnalysisForDocument(documentId) {
   const profiles = await CVParsedProfile.find({ documentId });
@@ -270,7 +270,7 @@ async function uploadAndAnalyzeFile(req, res) {
       return res.status(400).json({ error: 'Only PDF and DOCX files are supported' });
     }
 
-    const fast = await analyzeCvFileViaFastapi({
+    const { ats: fast, extractedText, engine } = await analyzeUploadedCvFile({
       fileBuffer: req.file.buffer,
       fileName: originalFileName,
     });
@@ -279,7 +279,7 @@ async function uploadAndAnalyzeFile(req, res) {
       userId: req.userId,
       originalFileName,
       fileType: ext,
-      extractedText: `Uploaded for ATS format check: ${originalFileName}`,
+      extractedText: extractedText || `Uploaded for ATS format check: ${originalFileName}`,
       documentStage: 'analyzed',
       generatedBy: 'user',
       fileUrl: '',
@@ -318,7 +318,7 @@ async function uploadAndAnalyzeFile(req, res) {
       emailExtracted: '',
       specializationDetected: spec,
       rawJson: JSON.stringify({
-        engine: fast.templateId,
+        engine: engine || fast.templateId,
         score: fast.score,
         issues: fast.missingKeywords,
       }),
@@ -366,8 +366,8 @@ async function uploadAndAnalyzeFile(req, res) {
     });
   } catch (err) {
     console.error(err);
-    return res.status(502).json({
-      error: `ATS engine unavailable: ${err.message}`,
+    return res.status(500).json({
+      error: err.message || 'Upload analysis failed',
     });
   }
 }
