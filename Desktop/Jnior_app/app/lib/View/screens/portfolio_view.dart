@@ -39,7 +39,9 @@ class _PortfolioViewState extends State<PortfolioView> {
       }
       final PortfolioController port = Get.find<PortfolioController>();
       unawaited(
-        port.hydrateFromLatestCv().then((_) => port.refreshPreviewFromCv()),
+        port
+            .hydrateFromLatestCv(tryReparseLastUpload: true)
+            .then((_) => port.refreshPreviewFromCv()),
       );
     });
   }

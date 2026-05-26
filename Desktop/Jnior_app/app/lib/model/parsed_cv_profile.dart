@@ -29,7 +29,9 @@ class ParsedCvProfile {
   /// True when this profile has enough data to render the portfolio preview.
   bool get hasPortfolioData =>
       displayName.isNotEmpty ||
+      headline.isNotEmpty ||
       summary.isNotEmpty ||
+      email.isNotEmpty ||
       skills.isNotEmpty ||
       experience.isNotEmpty ||
       education.isNotEmpty;

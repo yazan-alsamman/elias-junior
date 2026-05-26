@@ -12,6 +12,7 @@ import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/local_ats_service.dart';
+import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -26,6 +27,10 @@ enum PostUploadStep {
 class CVController extends GetxController {
   /// Last successfully parsed profile (same session) when Mongo has no JSON yet.
   ParsedCvProfile? lastPortfolioProfile;
+
+  /// Last uploaded file bytes — used to re-parse for portfolio without re-picking a file.
+  Uint8List? lastUploadBytes;
+  String? lastUploadFileName;
 
   static const List<String> progressMessages = <String>[
     'Reading your CV…',
@@ -69,7 +74,15 @@ class CVController extends GetxController {
     postCompany = TextEditingController();
     postJobDescription = TextEditingController();
     if (Get.find<AuthApiService>().isLoggedIn) {
+      unawaited(_restorePortfolioCache());
       unawaited(loadFromApi());
+    }
+  }
+
+  Future<void> _restorePortfolioCache() async {
+    final ParsedCvProfile? cached = await PortfolioProfileCache.load();
+    if (cached != null && cached.hasPortfolioData) {
+      lastPortfolioProfile = cached;
     }
   }
 
@@ -85,6 +98,7 @@ class CVController extends GetxController {
       if (parsed != null && parsed.hasPortfolioData) {
         final CVDocument enriched = doc.copyWithParsed(parsed);
         lastPortfolioProfile = parsed;
+        unawaited(PortfolioProfileCache.save(parsed));
         return enriched;
       }
     }
@@ -121,7 +135,39 @@ class CVController extends GetxController {
   /// After logout — clear stored CVs (no fake demo scores).
   void resetToDemo() {
     documents.clear();
+    lastPortfolioProfile = null;
+    lastUploadBytes = null;
+    lastUploadFileName = null;
+    unawaited(PortfolioProfileCache.clear());
     update();
+  }
+
+  /// Re-run local ATS text extract + heuristic parse (no file picker).
+  Future<ParsedCvProfile?> reparseLastUploadForPortfolio() async {
+    final Uint8List? bytes = lastUploadBytes;
+    final String? fileName = lastUploadFileName;
+    if (bytes == null || bytes.isEmpty || fileName == null || fileName.isEmpty) {
+      return null;
+    }
+    try {
+      final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+        fileBytes: bytes,
+        fileName: fileName,
+      );
+      final String text = ats.extractedText;
+      if (text.length < 40) {
+        return null;
+      }
+      final ParsedCvProfile? parsed = CvTextHeuristic.parseResumeText(text);
+      if (parsed != null && parsed.hasPortfolioData) {
+        lastPortfolioProfile = parsed;
+        unawaited(PortfolioProfileCache.save(parsed));
+        return parsed;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   @override
@@ -293,6 +339,8 @@ class CVController extends GetxController {
 
     try {
       final Uint8List fileBytes = await readPlatformFileBytes(file);
+      lastUploadBytes = fileBytes;
+      lastUploadFileName = name;
 
       // ATS only (local Uvicorn :8000). CV parser is paused — see ApiConfig.cvParserEnabled.
       final String ext = name.toLowerCase().split('.').last;
@@ -385,6 +433,7 @@ class CVController extends GetxController {
       if (uploaded.parsedProfile != null &&
           uploaded.parsedProfile!.hasPortfolioData) {
         lastPortfolioProfile = uploaded.parsedProfile;
+        unawaited(PortfolioProfileCache.save(uploaded.parsedProfile!));
       }
       documents.add(uploaded);
       if (Get.isRegistered<PortfolioController>()) {

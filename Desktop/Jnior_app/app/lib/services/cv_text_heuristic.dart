@@ -19,6 +19,7 @@ abstract final class CvTextHeuristic {
     final String email = _email(text);
     final String phone = _phone(text);
     final String name = _name(text);
+    final String headline = _headline(text, name);
     final String location = _location(text);
     final String summary = _section(
       text,
@@ -36,7 +37,7 @@ abstract final class CvTextHeuristic {
     final ParsedCvProfile profile = ParsedCvProfile.fromJson(<String, dynamic>{
       'profile': <String, dynamic>{
         'name': name,
-        'headline': '',
+        'headline': headline,
         'location': location,
         'contact': <String, dynamic>{
           'email': email,
@@ -108,6 +109,37 @@ abstract final class CvTextHeuristic {
           !RegExp(r'\d').hasMatch(t)) {
         return t;
       }
+    }
+    return '';
+  }
+
+  /// Role line directly under the name (e.g. "Senior Software Engineer").
+  static String _headline(String text, String name) {
+    final List<String> lines =
+        text.split('\n').map((String l) => l.trim()).where((String l) => l.isNotEmpty).toList();
+    if (lines.isEmpty) {
+      return '';
+    }
+    final String nameNorm = name.trim().toLowerCase();
+    for (int i = 0; i < lines.length && i < 6; i++) {
+      final String t = lines[i];
+      if (nameNorm.isNotEmpty && t.toLowerCase() == nameNorm) {
+        continue;
+      }
+      if (_emailRe.hasMatch(t) || _phoneRe.hasMatch(t)) {
+        continue;
+      }
+      if (RegExp(r'^(email|phone|location|linkedin|github)\s*:', caseSensitive: false)
+          .hasMatch(t)) {
+        continue;
+      }
+      if (t.length > 90 || RegExp(r'\d{3,}').hasMatch(t)) {
+        continue;
+      }
+      if (_isSectionHeader(t.toLowerCase())) {
+        continue;
+      }
+      return t;
     }
     return '';
   }

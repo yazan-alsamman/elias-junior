@@ -10,6 +10,7 @@ import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/github_og_image_service.dart';
 import 'package:app/services/portfolio_custom_image_codec.dart';
+import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -76,7 +77,7 @@ class PortfolioController extends GetxController {
         githubLinkController.text = displayUsername.isNotEmpty ? displayUsername : '';
         showPreview = displayUsername.isNotEmpty;
         if (showPreview) {
-          await hydrateFromLatestCv();
+          await hydrateFromLatestCv(tryReparseLastUpload: true);
           _rebuildPreviewDataOnly();
           _scheduleOgResolution();
         }
@@ -199,7 +200,7 @@ class PortfolioController extends GetxController {
   }
 
   /// Load name, bio, skills from stored JSON or parsed résumé text.
-  Future<void> hydrateFromLatestCv() async {
+  Future<void> hydrateFromLatestCv({bool tryReparseLastUpload = false}) async {
     if (!Get.find<AuthApiService>().isLoggedIn) {
       return;
     }
@@ -207,10 +208,25 @@ class PortfolioController extends GetxController {
       return;
     }
     final CVController cv = Get.find<CVController>();
+
+    final ParsedCvProfile? disk = await PortfolioProfileCache.load();
+    if (disk != null && disk.hasPortfolioData) {
+      cv.lastPortfolioProfile = disk;
+      _applyParsedToPortfolio(disk);
+      return;
+    }
+
     if (cv.documents.isEmpty) {
       await cv.loadFromApi();
     }
     if (cv.documents.isEmpty) {
+      if (tryReparseLastUpload) {
+        final ParsedCvProfile? reparsed =
+            await cv.reparseLastUploadForPortfolio();
+        if (reparsed != null) {
+          _applyParsedToPortfolio(reparsed);
+        }
+      }
       return;
     }
 
@@ -238,12 +254,13 @@ class PortfolioController extends GetxController {
       return;
     }
 
-    if (showPreview && displayUsername.isNotEmpty) {
-      AuroraSnack.warning(
-        'CV data missing',
-        'Re-upload your CV on the Dashboard so we can extract your profile text.',
-        duration: const Duration(seconds: 6),
-      );
+    if (tryReparseLastUpload) {
+      final ParsedCvProfile? reparsed =
+          await cv.reparseLastUploadForPortfolio();
+      if (reparsed != null) {
+        _applyParsedToPortfolio(reparsed);
+        return;
+      }
     }
   }
 
@@ -269,8 +286,16 @@ class PortfolioController extends GetxController {
       }
     }
 
-    final String text = doc.extractedText.trim();
-    if (text.length > 80 && !_isPlaceholderExtractedText(text)) {
+    String text = doc.extractedText.trim();
+    if (_isPlaceholderExtractedText(text)) {
+      final String preview = doc.contentPreview.trim();
+      if (preview.length > 80 && !_isPlaceholderExtractedText(preview)) {
+        text = preview;
+      } else {
+        return null;
+      }
+    }
+    if (text.length > 80) {
       return CvTextHeuristic.parseResumeText(text);
     }
     return null;
@@ -285,6 +310,7 @@ class PortfolioController extends GetxController {
 
   void _applyParsedToPortfolio(ParsedCvProfile parsed) {
     _parsedFromCv = parsed;
+    unawaited(PortfolioProfileCache.save(parsed));
     if (projectNames.isEmpty && parsed.projects.isNotEmpty) {
       for (final Map<String, dynamic> p in parsed.projects) {
         final String name =
@@ -423,10 +449,15 @@ class PortfolioController extends GetxController {
     loading = false;
     showPreview = true;
     update();
-    await hydrateFromLatestCv();
+    await hydrateFromLatestCv(tryReparseLastUpload: true);
+    _rebuildPreviewDataOnly();
+    update();
     if (_parsedFromCv == null || !_parsedFromCv!.hasPortfolioData) {
-      _rebuildPreviewDataOnly();
-      update();
+      AuroraSnack.warning(
+        'CV data missing',
+        'Upload your CV on the Dashboard (ATS must be running), then generate preview again.',
+        duration: const Duration(seconds: 7),
+      );
     }
     _scheduleOgResolution();
   }
