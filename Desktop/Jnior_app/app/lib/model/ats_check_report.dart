@@ -132,6 +132,31 @@ class ATSCheckReport {
     );
   }
 
+  /// Replace score/decision (e.g. restore from local ledger after Mongo returns 28).
+  ATSCheckReport withScore(int newScore, {String? engineOverride}) {
+    final String d =
+        newScore > passScoreThreshold ? 'PASS' : 'FAIL';
+    return ATSCheckReport(
+      score: newScore,
+      status: d,
+      checkedAt: checkedAt,
+      keywordsChecked: keywordsChecked,
+      keywordsTotal: keywordsTotal,
+      formatScore: newScore,
+      sectionMatch: sectionMatch,
+      estimatedSecondsLeft: estimatedSecondsLeft,
+      missingKeywords: missingKeywords,
+      recommendations: recommendations,
+      suitabilityHeadline: suitabilityHeadline,
+      issuesSummary: issuesSummary,
+      engine: engineOverride ?? 'fastapi-ats-format-v1',
+      decision: d,
+      failedRulesCount: failedRulesCount,
+      failedBasic: failedBasic,
+      failures: failures,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'score': score,
         'status': status,

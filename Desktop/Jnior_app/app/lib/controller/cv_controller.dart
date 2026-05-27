@@ -13,6 +13,7 @@ import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/fake_cv_parser_service.dart';
+import 'package:app/services/ats_score_ledger.dart';
 import 'package:app/services/local_ats_report_cache.dart';
 import 'package:app/services/local_ats_service.dart';
 import 'package:app/services/local_cv_file_cache.dart';
@@ -47,6 +48,8 @@ class CVController extends GetxController {
   final List<CVDocument> documents = <CVDocument>[];
   final Map<String, ATSCheckReport> _localAtsByDocumentId = <String, ATSCheckReport>{};
   final Map<String, ATSCheckReport> _localAtsByFileName = <String, ATSCheckReport>{};
+  final Map<String, AtsScoreLedgerEntry> _scoreLedgerByFileName =
+      <String, AtsScoreLedgerEntry>{};
   bool isUploading = false;
   int messageIndex = 0;
   Timer? _uploadMessageTimer;
@@ -89,8 +92,10 @@ class CVController extends GetxController {
   Future<void> _preloadLocalAtsCache() async {
     _localAtsByDocumentId.clear();
     _localAtsByFileName.clear();
+    _scoreLedgerByFileName.clear();
     _localAtsByDocumentId.addAll(await LocalAtsReportCache.loadAllByDocumentId());
     _localAtsByFileName.addAll(await LocalAtsReportCache.loadAllByFileName());
+    _scoreLedgerByFileName.addAll(await AtsScoreLedger.loadAllByFileName());
   }
 
   void _rememberLocalAtsReport({
@@ -134,14 +139,32 @@ class CVController extends GetxController {
       documentId: doc.id,
       fileName: doc.fileName,
     );
-    if (cached != null &&
-        LocalAtsReportCache.shouldPreferLocal(doc.report, cached)) {
+    if (cached != null) {
       _rememberLocalAtsReport(
         report: cached,
         documentId: doc.id,
         fileName: doc.fileName,
       );
       return doc.copyWith(report: cached);
+    }
+
+    if (doc.report.score == 28 ||
+        LocalAtsReportCache.isPlaceholderScore(doc.report)) {
+      AtsScoreLedgerEntry? ledger = _scoreLedgerByFileName[doc.fileName];
+      ledger ??= await AtsScoreLedger.loadFor(
+        documentId: doc.id,
+        fileName: doc.fileName,
+      );
+      if (ledger != null && ledger.score > 0 && ledger.score != 28) {
+        final ATSCheckReport patched =
+            doc.report.withScore(ledger.score, engineOverride: ledger.engine);
+        _rememberLocalAtsReport(
+          report: patched,
+          documentId: doc.id,
+          fileName: doc.fileName,
+        );
+        return doc.copyWith(report: patched);
+      }
     }
     return doc;
   }
@@ -178,6 +201,16 @@ class CVController extends GetxController {
         report: report,
         documentId: doc.id,
         fileName: doc.fileName,
+      );
+      await AtsScoreLedger.save(
+        score: report.score,
+        decision: report.scoreDecision,
+        documentId: doc.id,
+        fileName: doc.fileName,
+      );
+      _scoreLedgerByFileName[doc.fileName] = AtsScoreLedgerEntry(
+        score: report.score,
+        decision: report.scoreDecision,
       );
       return doc.copyWith(report: report);
     } catch (_) {
@@ -340,7 +373,9 @@ class CVController extends GetxController {
     unawaited(LocalCvJsonStore.clear());
     _localAtsByDocumentId.clear();
     _localAtsByFileName.clear();
+    _scoreLedgerByFileName.clear();
     unawaited(LocalAtsReportCache.clear());
+    unawaited(AtsScoreLedger.clear());
     unawaited(LocalCvFileCache.clear());
     update();
   }
@@ -625,6 +660,15 @@ class CVController extends GetxController {
 
       final ATSCheckReport localReport = atsResult.toAtsCheckReport();
       _rememberLocalAtsReport(report: localReport, fileName: name);
+      await AtsScoreLedger.save(
+        score: localReport.score,
+        decision: localReport.scoreDecision,
+        fileName: name,
+      );
+      _scoreLedgerByFileName[name] = AtsScoreLedgerEntry(
+        score: localReport.score,
+        decision: localReport.scoreDecision,
+      );
       await LocalAtsReportCache.save(report: localReport, fileName: name);
 
       final Map<String, dynamic> atsPayload =
@@ -655,6 +699,16 @@ class CVController extends GetxController {
         report: localReport,
         documentId: uploaded.id,
         fileName: name,
+      );
+      await AtsScoreLedger.save(
+        score: localReport.score,
+        decision: localReport.scoreDecision,
+        documentId: uploaded.id,
+        fileName: name,
+      );
+      _scoreLedgerByFileName[name] = AtsScoreLedgerEntry(
+        score: localReport.score,
+        decision: localReport.scoreDecision,
       );
       await LocalAtsReportCache.save(
         report: localReport,
