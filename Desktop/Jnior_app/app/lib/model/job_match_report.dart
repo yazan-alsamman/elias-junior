@@ -106,7 +106,14 @@ class JobMatchReport {
     if (raw is! List) {
       return <String>[];
     }
-    return raw.map((Object e) => e.toString()).where((String s) => s.isNotEmpty).toList();
+    final List<String> out = <String>[];
+    for (final Object? item in raw) {
+      final String s = item.toString().trim();
+      if (s.isNotEmpty) {
+        out.add(s);
+      }
+    }
+    return out;
   }
 }
 
