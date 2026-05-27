@@ -15,6 +15,7 @@ import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/fake_cv_parser_service.dart';
 import 'package:app/services/local_ats_report_cache.dart';
 import 'package:app/services/local_ats_service.dart';
+import 'package:app/services/local_cv_file_cache.dart';
 import 'package:app/services/local_cv_json_store.dart';
 import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
@@ -108,6 +109,106 @@ class CVController extends GetxController {
     return doc;
   }
 
+  Future<CVDocument> _rescoreFromLocalFile(CVDocument doc) async {
+    if (!LocalAtsReportCache.isPlaceholderScore(doc.report)) {
+      return doc;
+    }
+    final Uint8List? bytes = await LocalCvFileCache.load(
+      documentId: doc.id,
+      fileName: doc.fileName,
+    );
+    if (bytes == null || bytes.isEmpty) {
+      return doc;
+    }
+    try {
+      final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+        fileBytes: bytes,
+        fileName: doc.fileName,
+      );
+      final ATSCheckReport report = ats.toAtsCheckReport();
+      await LocalAtsReportCache.save(
+        report: report,
+        documentId: doc.id,
+        fileName: doc.fileName,
+      );
+      return doc.copyWith(report: report);
+    } catch (_) {
+      return doc;
+    }
+  }
+
+  /// Same filename, many Mongo rows — one cached PDF fixes all placeholder scores.
+  Future<void> _rescoreMatchingFileName(
+    List<CVDocument> docs,
+    String fileName,
+    ATSCheckReport report,
+  ) async {
+    for (int i = 0; i < docs.length; i++) {
+      if (docs[i].fileName != fileName) {
+        continue;
+      }
+      if (!LocalAtsReportCache.isPlaceholderScore(docs[i].report)) {
+        continue;
+      }
+      docs[i] = docs[i].copyWith(report: report);
+      await LocalAtsReportCache.save(
+        report: report,
+        documentId: docs[i].id,
+        fileName: fileName,
+      );
+    }
+  }
+
+  Future<void> _rescoreStaleFromCachedFiles(List<CVDocument> docs) async {
+    if (lastUploadBytes != null &&
+        lastUploadFileName != null &&
+        lastUploadFileName!.isNotEmpty) {
+      try {
+        final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+          fileBytes: lastUploadBytes!,
+          fileName: lastUploadFileName!,
+        );
+        await _rescoreMatchingFileName(
+          docs,
+          lastUploadFileName!,
+          ats.toAtsCheckReport(),
+        );
+      } catch (_) {
+        /* ATS offline */
+      }
+    }
+
+    final Set<String> staleNames = docs
+        .where((CVDocument d) => LocalAtsReportCache.isPlaceholderScore(d.report))
+        .map((CVDocument d) => d.fileName)
+        .toSet();
+    for (final String fileName in staleNames) {
+      final Uint8List? shared = await LocalCvFileCache.load(fileName: fileName);
+      if (shared == null || shared.isEmpty) {
+        continue;
+      }
+      try {
+        final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+          fileBytes: shared,
+          fileName: fileName,
+        );
+        await _rescoreMatchingFileName(
+          docs,
+          fileName,
+          ats.toAtsCheckReport(),
+        );
+      } catch (_) {
+        /* ATS offline — try per-doc */
+      }
+    }
+
+    for (int i = 0; i < docs.length; i++) {
+      if (LocalAtsReportCache.isPlaceholderScore(docs[i].report)) {
+        docs[i] = await _rescoreFromLocalFile(docs[i]);
+      }
+    }
+  }
+
   CVDocument _enrichDocumentWithParse(CVDocument doc) {
     if (doc.parsedProfile != null && doc.parsedProfile!.hasPortfolioData) {
       return doc;
@@ -144,10 +245,22 @@ class CVController extends GetxController {
         row = await _applyCachedAtsReport(row);
         enriched.add(row);
       }
+      await _rescoreStaleFromCachedFiles(enriched);
       documents
         ..clear()
         ..addAll(enriched);
       update();
+      final int stale = documents
+          .where((CVDocument d) => LocalAtsReportCache.isPlaceholderScore(d.report))
+          .length;
+      if (stale > 0) {
+        AuroraSnack.info(
+          'ATS scores',
+          '$stale CV(s) still show placeholder score 28. '
+          'Start ATS (start-local-dev.cmd) and upload once to refresh.',
+          duration: const Duration(seconds: 6),
+        );
+      }
       if (Get.isRegistered<PortfolioController>()) {
         final PortfolioController port = Get.find<PortfolioController>();
         unawaited(
@@ -172,6 +285,7 @@ class CVController extends GetxController {
     unawaited(PortfolioProfileCache.clear());
     unawaited(LocalCvJsonStore.clear());
     unawaited(LocalAtsReportCache.clear());
+    unawaited(LocalCvFileCache.clear());
     update();
   }
 
@@ -375,6 +489,7 @@ class CVController extends GetxController {
       final Uint8List fileBytes = await readPlatformFileBytes(file);
       lastUploadBytes = fileBytes;
       lastUploadFileName = name;
+      await LocalCvFileCache.save(bytes: fileBytes, fileName: name);
 
       // ATS only (local Uvicorn :8000). CV parser is paused — see ApiConfig.cvParserEnabled.
       final String ext = name.toLowerCase().split('.').last;
@@ -438,11 +553,22 @@ class CVController extends GetxController {
 
       CVDocument uploaded = CVDocument.fromUploadResponse(saved);
       uploaded = uploaded.copyWith(report: localReport);
+      await LocalCvFileCache.save(
+        bytes: fileBytes,
+        fileName: name,
+        documentId: uploaded.id,
+      );
       await LocalAtsReportCache.save(
         report: localReport,
         documentId: uploaded.id,
         fileName: name,
       );
+      for (int i = 0; i < documents.length; i++) {
+        if (documents[i].fileName == name &&
+            LocalAtsReportCache.isPlaceholderScore(documents[i].report)) {
+          documents[i] = documents[i].copyWith(report: localReport);
+        }
+      }
       if (localParsed != null && localParsed.hasPortfolioData) {
         uploaded = uploaded.copyWithParsed(localParsed);
         if (uploaded.id != null) {

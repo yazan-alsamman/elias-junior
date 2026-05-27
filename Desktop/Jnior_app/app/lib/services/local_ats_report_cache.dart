@@ -100,11 +100,18 @@ class LocalAtsReportCache {
   }
 
   /// Replace heuristic / placeholder Mongo scores with cached local ATS results.
+  static bool isPlaceholderScore(ATSCheckReport report) {
+    return report.isFallback ||
+        report.engine == 'heuristic-v1' ||
+        report.score == 28 ||
+        report.issuesSummary.toLowerCase().contains('heuristic scan');
+  }
+
   static bool shouldPreferLocal(ATSCheckReport api, ATSCheckReport local) {
     if (!local.isRealAts) {
       return false;
     }
-    if (api.isFallback || api.engine == 'heuristic-v1') {
+    if (isPlaceholderScore(api)) {
       return true;
     }
     if (api.isRealAts && api.score == 28 && local.score != 28) {
