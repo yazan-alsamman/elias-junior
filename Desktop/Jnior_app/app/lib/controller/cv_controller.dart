@@ -45,6 +45,8 @@ class CVController extends GetxController {
   ];
 
   final List<CVDocument> documents = <CVDocument>[];
+  final Map<String, ATSCheckReport> _localAtsByDocumentId = <String, ATSCheckReport>{};
+  final Map<String, ATSCheckReport> _localAtsByFileName = <String, ATSCheckReport>{};
   bool isUploading = false;
   int messageIndex = 0;
   Timer? _uploadMessageTimer;
@@ -80,8 +82,35 @@ class CVController extends GetxController {
     postJobDescription = TextEditingController();
     if (Get.find<AuthApiService>().isLoggedIn) {
       unawaited(_restorePortfolioCache());
-      unawaited(loadFromApi());
+      unawaited(_preloadLocalAtsCache().then((_) => loadFromApi()));
     }
+  }
+
+  Future<void> _preloadLocalAtsCache() async {
+    _localAtsByDocumentId.clear();
+    _localAtsByFileName.clear();
+    _localAtsByDocumentId.addAll(await LocalAtsReportCache.loadAllByDocumentId());
+    _localAtsByFileName.addAll(await LocalAtsReportCache.loadAllByFileName());
+  }
+
+  void _rememberLocalAtsReport({
+    required ATSCheckReport report,
+    String? documentId,
+    String? fileName,
+  }) {
+    if (documentId != null && documentId.isNotEmpty) {
+      _localAtsByDocumentId[documentId] = report;
+    }
+    if (fileName != null && fileName.trim().isNotEmpty) {
+      _localAtsByFileName[fileName.trim()] = report;
+    }
+  }
+
+  ATSCheckReport? _localAtsForDocument(CVDocument doc) {
+    if (doc.id != null && _localAtsByDocumentId.containsKey(doc.id)) {
+      return _localAtsByDocumentId[doc.id!];
+    }
+    return _localAtsByFileName[doc.fileName];
   }
 
   Future<void> _restorePortfolioCache() async {
@@ -100,18 +129,30 @@ class CVController extends GetxController {
   }
 
   Future<CVDocument> _applyCachedAtsReport(CVDocument doc) async {
-    final ATSCheckReport? cached = await LocalAtsReportCache.loadFor(
+    ATSCheckReport? cached = _localAtsForDocument(doc);
+    cached ??= await LocalAtsReportCache.loadFor(
       documentId: doc.id,
       fileName: doc.fileName,
     );
     if (cached != null &&
         LocalAtsReportCache.shouldPreferLocal(doc.report, cached)) {
+      _rememberLocalAtsReport(
+        report: cached,
+        documentId: doc.id,
+        fileName: doc.fileName,
+      );
       return doc.copyWith(report: cached);
     }
     return doc;
   }
 
   Future<CVDocument> _rescoreFromLocalFile(CVDocument doc) async {
+    final ATSCheckReport? existing = _localAtsForDocument(doc);
+    if (existing != null &&
+        existing.isRealAts &&
+        !LocalAtsReportCache.isPlaceholderScore(existing)) {
+      return doc.copyWith(report: existing);
+    }
     if (!LocalAtsReportCache.isPlaceholderScore(doc.report)) {
       return doc;
     }
@@ -128,6 +169,11 @@ class CVController extends GetxController {
         fileName: doc.fileName,
       );
       final ATSCheckReport report = ats.toAtsCheckReport();
+      _rememberLocalAtsReport(
+        report: report,
+        documentId: doc.id,
+        fileName: doc.fileName,
+      );
       await LocalAtsReportCache.save(
         report: report,
         documentId: doc.id,
@@ -153,6 +199,11 @@ class CVController extends GetxController {
         continue;
       }
       docs[i] = docs[i].copyWith(report: report);
+      _rememberLocalAtsReport(
+        report: report,
+        documentId: docs[i].id,
+        fileName: fileName,
+      );
       await LocalAtsReportCache.save(
         report: report,
         documentId: docs[i].id,
@@ -240,6 +291,7 @@ class CVController extends GetxController {
   /// Load CV list from Express + MongoDB.
   Future<void> loadFromApi() async {
     try {
+      await _preloadLocalAtsCache();
       final List<CVDocument> list = await CareerApiService.to.documentsList();
       final List<CVDocument> enriched = <CVDocument>[];
       for (final CVDocument doc in list) {
@@ -255,7 +307,7 @@ class CVController extends GetxController {
       final int stale = documents
           .where((CVDocument d) => LocalAtsReportCache.isPlaceholderScore(d.report))
           .length;
-      if (stale > 0) {
+      if (stale > 0 && _localAtsByDocumentId.isEmpty && _localAtsByFileName.isEmpty) {
         AuroraSnack.info(
           'ATS scores',
           '$stale CV(s) still show placeholder score 28. '
@@ -286,6 +338,8 @@ class CVController extends GetxController {
     lastUploadFileName = null;
     unawaited(PortfolioProfileCache.clear());
     unawaited(LocalCvJsonStore.clear());
+    _localAtsByDocumentId.clear();
+    _localAtsByFileName.clear();
     unawaited(LocalAtsReportCache.clear());
     unawaited(LocalCvFileCache.clear());
     update();
@@ -570,6 +624,9 @@ class CVController extends GetxController {
       }
 
       final ATSCheckReport localReport = atsResult.toAtsCheckReport();
+      _rememberLocalAtsReport(report: localReport, fileName: name);
+      await LocalAtsReportCache.save(report: localReport, fileName: name);
+
       final Map<String, dynamic> atsPayload =
           Map<String, dynamic>.from(atsResult.raw);
       atsPayload['computed_score'] = localReport.score;
@@ -593,6 +650,11 @@ class CVController extends GetxController {
         bytes: fileBytes,
         fileName: name,
         documentId: uploaded.id,
+      );
+      _rememberLocalAtsReport(
+        report: localReport,
+        documentId: uploaded.id,
+        fileName: name,
       );
       await LocalAtsReportCache.save(
         report: localReport,
