@@ -9,7 +9,9 @@ import 'package:app/common/widgets/glow_card.dart';
 import 'package:app/common/widgets/gradient_button.dart';
 import 'package:app/common/widgets/gradient_text.dart';
 import 'package:app/common/widgets/skeleton.dart';
+import 'package:app/controller/cv_controller.dart';
 import 'package:app/controller/pipeline_controller.dart';
+import 'package:app/model/cv_document.dart';
 import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/job_match_report.dart';
 import 'package:app/view/widgets/app_drawer.dart';
@@ -22,11 +24,13 @@ class PipelineView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GetBuilder<PipelineController>(
-      builder: (PipelineController controller) {
-        final double width = MediaQuery.of(context).size.width;
-        final bool desktop = width >= 980;
-        return Scaffold(
+    return GetBuilder<CVController>(
+      builder: (CVController cv) {
+        return GetBuilder<PipelineController>(
+          builder: (PipelineController controller) {
+            final double width = MediaQuery.of(context).size.width;
+            final bool desktop = width >= 980;
+            return Scaffold(
           backgroundColor: AuroraDark.bg,
           extendBodyBehindAppBar: true,
           appBar: desktop
@@ -81,6 +85,15 @@ class PipelineView extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           if (desktop) AppSpacing.gapSm,
+                          if (cv.documents.isNotEmpty)
+                            _PipelineCvPicker(
+                              documents: cv.documents,
+                              selectedId: controller.focusedDocumentId,
+                              isUploading: cv.isUploading,
+                              uploadFileName: cv.lastUploadFileName,
+                              onSelected: controller.selectDocument,
+                            ),
+                          if (cv.documents.isNotEmpty) AppSpacing.gapMd,
                           _PipelineHeader(
                             mobile: width < 700,
                             subtitle: controller.isLoading
@@ -105,7 +118,81 @@ class PipelineView extends StatelessWidget {
             ),
           ),
         );
+          },
+        );
       },
+    );
+  }
+}
+
+class _PipelineCvPicker extends StatelessWidget {
+  final List<CVDocument> documents;
+  final String? selectedId;
+  final bool isUploading;
+  final String? uploadFileName;
+  final ValueChanged<String?> onSelected;
+
+  const _PipelineCvPicker({
+    required this.documents,
+    required this.selectedId,
+    required this.isUploading,
+    required this.uploadFileName,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final List<CVDocument> sorted = List<CVDocument>.from(documents)
+      ..sort((CVDocument a, CVDocument b) =>
+          b.uploadedAt.compareTo(a.uploadedAt));
+
+    return GlowCard(
+      glowColor: AuroraDark.cyanBright,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.description_outlined,
+              color: AuroraDark.cyanBright, size: 20),
+          AppSpacing.gapSm,
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                isExpanded: true,
+                value: isUploading ? null : (selectedId ?? sorted.first.id),
+                dropdownColor: AuroraDark.surfaceHigh,
+                style: AppType.bodyMedium.copyWith(color: AuroraDark.textPrimary),
+                items: <DropdownMenuItem<String?>>[
+                  if (isUploading && uploadFileName != null)
+                    DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text(
+                        'Live: uploading $uploadFileName…',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ...sorted.map(
+                    (CVDocument d) => DropdownMenuItem<String?>(
+                      value: d.id,
+                      child: Text(
+                        '${d.fileName} · ATS ${d.report.score}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: onSelected,
+              ),
+            ),
+          ),
+          if (isUploading) ...<Widget>[
+            AppSpacing.gapSm,
+            const PulsingDot(color: AuroraDark.lime),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:app/common/app_colors.dart';
+import 'package:app/common/app_typography.dart';
 import 'package:app/common/custom_card.dart';
 import 'package:app/controller/cv_controller.dart';
 import 'package:app/model/ats_check_report.dart';
@@ -120,13 +121,13 @@ class _AtsStepCard extends StatelessWidget {
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1,
-                          color: AppColors.textMuted,
+                          color: AuroraDark.textMuted,
                         ),
                       ),
                       Text(
                         document.fileName,
                         style: const TextStyle(
-                          color: AppColors.textPrimary,
+                          color: AuroraDark.textPrimary,
                           fontWeight: FontWeight.w800,
                           fontSize: 17,
                         ),
@@ -208,10 +209,9 @@ class _AtsStepCard extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               r.isRealAts ? 'Format issues' : 'Keywords',
-              style: const TextStyle(
-                color: AppColors.textPrimary,
+              style: AppType.titleMedium.copyWith(
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w700,
-                fontSize: 15,
               ),
             ),
             const SizedBox(height: 6),
@@ -221,16 +221,15 @@ class _AtsStepCard extends StatelessWidget {
                       ? '${r.failedRulesCount} rule(s) failed'
                       : 'All format rules passed')
                   : '${r.keywordsChecked} / ${r.keywordsTotal} matched in scan',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+              style: AppType.bodySmall.copyWith(color: AuroraDark.textSecondary),
             ),
             if (r.missingKeywords.isNotEmpty) ...<Widget>[
               const SizedBox(height: 10),
               Text(
                 r.isRealAts ? 'Issues found' : 'Missing or weak keywords',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: AppType.bodyMedium.copyWith(
+                  color: AuroraDark.textSecondary,
                   fontWeight: FontWeight.w600,
-                  fontSize: 13,
                 ),
               ),
               const SizedBox(height: 8),
@@ -241,12 +240,10 @@ class _AtsStepCard extends StatelessWidget {
                     .map(
                       (String k) => Chip(
                         label: Text(k),
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        labelStyle: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        backgroundColor: AuroraDark.surfaceHigh,
+                        side: const BorderSide(color: AuroraDark.border),
+                        labelStyle: AppType.labelSmall.copyWith(
+                          color: AuroraDark.textPrimary,
                         ),
                       ),
                     )
@@ -255,12 +252,11 @@ class _AtsStepCard extends StatelessWidget {
             ],
             if (r.recommendations.isNotEmpty) ...<Widget>[
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Recommendations',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
+                style: AppType.titleMedium.copyWith(
+                  color: AuroraDark.textPrimary,
                   fontWeight: FontWeight.w700,
-                  fontSize: 15,
                 ),
               ),
               const SizedBox(height: 8),
@@ -270,14 +266,19 @@ class _AtsStepCard extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const Text('• ', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
+                      const Text(
+                        '• ',
+                        style: TextStyle(
+                          color: AuroraDark.cyanBright,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       Expanded(
                         child: Text(
                           line,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: AppType.bodyMedium.copyWith(
+                            color: AuroraDark.textSecondary,
                             height: 1.4,
-                            fontSize: 14,
                           ),
                         ),
                       ),
@@ -290,12 +291,15 @@ class _AtsStepCard extends StatelessWidget {
             OutlinedButton(
               onPressed: onBackToDashboard,
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
+                foregroundColor: AuroraDark.textPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                side: const BorderSide(color: AuroraDark.borderStrong),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Back to dashboard', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(
+                'Back to dashboard',
+                style: AppType.labelLarge.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
             const SizedBox(height: 12),
             FilledButton(
@@ -327,19 +331,18 @@ class _ScoreChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: AuroraDark.surfaceAlt,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: AuroraDark.borderStrong),
         ),
         child: Column(
           children: <Widget>[
-            Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            Text(label, style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted)),
             Text(
               value,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
+              style: AppType.titleSmall.copyWith(
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w800,
-                fontSize: 15,
               ),
             ),
           ],
@@ -374,7 +377,7 @@ class _JobStepCard extends StatelessWidget {
             const Text(
               'CV content (preview)',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w800,
                 fontSize: 17,
               ),
@@ -384,9 +387,9 @@ class _JobStepCard extends StatelessWidget {
               constraints: const BoxConstraints(maxHeight: 160),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AuroraDark.surfaceHigh,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AuroraDark.border),
               ),
               child: Scrollbar(
                 child: SingleChildScrollView(
@@ -394,9 +397,8 @@ class _JobStepCard extends StatelessWidget {
                     document.contentPreview.isEmpty
                         ? 'No preview text available for this file.'
                         : document.contentPreview,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
+                    style: AppType.bodySmall.copyWith(
+                      color: AuroraDark.textSecondary,
                       height: 1.45,
                     ),
                   ),
@@ -411,7 +413,7 @@ class _JobStepCard extends StatelessWidget {
                 Text(
                   'Target job',
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: AuroraDark.textPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
                   ),
@@ -421,7 +423,7 @@ class _JobStepCard extends StatelessWidget {
             const SizedBox(height: 6),
             const Text(
               'Same idea as the dashboard: tell us what you are applying for so we can judge fit.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.35),
+              style: TextStyle(color: AuroraDark.textMuted, fontSize: 13, height: 1.35),
             ),
             const SizedBox(height: 12),
             if (narrow) ...<Widget>[
@@ -500,7 +502,7 @@ class _JobStepCard extends StatelessWidget {
             const Text(
               'KB role (RAG)',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -509,19 +511,22 @@ class _JobStepCard extends StatelessWidget {
             DropdownButtonFormField<String>(
               isExpanded: true,
               value: controller.selectedTargetRole,
+              dropdownColor: AuroraDark.surfaceHigh,
               decoration: InputDecoration(
                 hintText: 'Auto-detect from job title',
+                hintStyle: AppType.bodyMedium.copyWith(color: AuroraDark.textMuted),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AuroraDark.surfaceHigh,
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                  borderSide: const BorderSide(color: AuroraDark.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                  borderSide: const BorderSide(color: AuroraDark.cyanBright),
                 ),
               ),
+              style: AppType.bodyMedium.copyWith(color: AuroraDark.textPrimary),
               items: <DropdownMenuItem<String>>[
                 const DropdownMenuItem<String>(
                   value: null,
@@ -597,7 +602,7 @@ class _JobStepCard extends StatelessWidget {
             OutlinedButton(
               onPressed: controller.finishPostUploadFlow,
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
+                foregroundColor: AuroraDark.textPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -621,10 +626,14 @@ class _RagJobMatchPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: suitable ? const Color(0xFFF0FDF4) : const Color(0xFFEFF6FF),
+        color: suitable
+            ? AuroraDark.success.withValues(alpha: 0.1)
+            : AuroraDark.indigo.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: suitable ? const Color(0xFFBBF7D0) : const Color(0xFFBFDBFE),
+          color: suitable
+              ? AuroraDark.success.withValues(alpha: 0.45)
+              : AuroraDark.indigo.withValues(alpha: 0.45),
         ),
       ),
       child: Column(
@@ -641,17 +650,16 @@ class _RagJobMatchPanel extends StatelessWidget {
                     CircularProgressIndicator(
                       value: report.finalScore / 100,
                       strokeWidth: 5,
-                      backgroundColor: const Color(0xFFE5E7EB),
+                      backgroundColor: AuroraDark.surfaceAlt,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        suitable ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                        suitable ? AuroraDark.success : AuroraDark.cyanBright,
                       ),
                     ),
                     Text(
                       '${report.finalScore}',
-                      style: const TextStyle(
+                      style: AppType.titleSmall.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        fontSize: 13,
+                        color: AuroraDark.textPrimary,
                       ),
                     ),
                   ],
@@ -665,7 +673,7 @@ class _RagJobMatchPanel extends StatelessWidget {
                     Text(
                       suitable ? 'Suitable for this role' : 'Gaps vs target role',
                       style: const TextStyle(
-                        color: AppColors.textPrimary,
+                        color: AuroraDark.textPrimary,
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),
@@ -674,14 +682,14 @@ class _RagJobMatchPanel extends StatelessWidget {
                     Text(
                       report.suitabilityHeadline,
                       style: const TextStyle(
-                        color: AppColors.textSecondary,
+                        color: AuroraDark.textSecondary,
                         fontSize: 13,
                         height: 1.35,
                       ),
                     ),
                     Text(
                       'RAG · ${RagRoleMapper.labelForRole(report.targetRole)} · ${report.specialization}',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                      style: const TextStyle(color: AuroraDark.textMuted, fontSize: 11),
                     ),
                   ],
                 ),
@@ -693,7 +701,7 @@ class _RagJobMatchPanel extends StatelessWidget {
             const Text(
               'Skill gaps',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -724,7 +732,7 @@ class _RagJobMatchPanel extends StatelessWidget {
             const Text(
               'Recommended courses',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: AuroraDark.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -733,7 +741,13 @@ class _RagJobMatchPanel extends StatelessWidget {
             ...report.recommendedCourses.take(4).map(
               (String c) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('• $c', style: const TextStyle(fontSize: 13, height: 1.35)),
+                child: Text(
+                  '• $c',
+                  style: AppType.bodySmall.copyWith(
+                    color: AuroraDark.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
               ),
             ),
           ],
@@ -742,7 +756,7 @@ class _RagJobMatchPanel extends StatelessWidget {
             const Text(
               'KB evidence (vector retrieval)',
               style: TextStyle(
-                color: AppColors.textMuted,
+                color: AuroraDark.textMuted,
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
               ),
@@ -752,7 +766,7 @@ class _RagJobMatchPanel extends StatelessWidget {
               report.retrievedEvidence.first.content.length > 160
                   ? '${report.retrievedEvidence.first.content.substring(0, 160)}…'
                   : report.retrievedEvidence.first.content,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.35),
+              style: const TextStyle(color: AuroraDark.textSecondary, fontSize: 12, height: 1.35),
             ),
           ],
         ],
@@ -784,7 +798,7 @@ class _LabeledField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            color: AppColors.textPrimary,
+            color: AuroraDark.textPrimary,
             fontWeight: FontWeight.w600,
             fontSize: 13,
           ),
@@ -794,19 +808,19 @@ class _LabeledField extends StatelessWidget {
           controller: controller,
           maxLines: maxLines,
           onChanged: onChanged,
-          style: const TextStyle(color: AppColors.textPrimary),
+          style: AppType.bodyMedium.copyWith(color: AuroraDark.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+            hintStyle: AppType.bodyMedium.copyWith(color: AuroraDark.textMuted),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: AuroraDark.surfaceHigh,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+              borderSide: const BorderSide(color: AuroraDark.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF2563EB)),
+              borderSide: const BorderSide(color: AuroraDark.cyanBright),
             ),
           ),
         ),

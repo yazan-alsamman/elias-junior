@@ -6,6 +6,8 @@ import 'package:app/model/cv_document.dart';
 import 'package:app/model/job_match_report.dart';
 import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
+import 'package:app/services/cv_pipeline_cache.dart';
+import 'package:app/services/job_match_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -34,20 +36,66 @@ class PipelineController extends GetxController {
       'Upload a PDF or Word CV to start ATS screening and job-fit analysis.';
   bool showStepProgress = false;
 
+  /// Which CV the pipeline page is showing (null = latest / live upload).
+  String? focusedDocumentId;
+  String? _liveUploadFileName;
+  CVDocument? focusedDocument;
+
   @override
   void onInit() {
     super.onInit();
     unawaited(fetchPipelineData());
   }
 
-  /// Prefer local CV + user actions; fall back to backend summary when empty.
+  void selectDocument(String? documentId) {
+    focusedDocumentId = documentId;
+    unawaited(fetchPipelineData());
+  }
+
+  /// Called when user picks a new file — pipeline restarts at step 1.
+  void beginNewUpload(String fileName) {
+    _liveUploadFileName = fileName;
+    focusedDocumentId = null;
+    focusedDocument = null;
+    isLoading = false;
+    unawaited(CvPipelineCache.reset(fileName: fileName));
+    _applyLiveUpload(fileName);
+    update();
+  }
+
+  /// Live refresh while uploading / post-upload flow (no loading spinner).
+  Future<void> syncLive() async {
+    final CVController? cv = _tryReadCvController();
+    if (cv == null) return;
+
+    if (cv.isUploading && _liveUploadFileName != null) {
+      _applyLiveUpload(_liveUploadFileName!);
+      update();
+      return;
+    }
+
+    final CVDocument? doc = _resolveDocument(cv);
+    if (doc != null) {
+      await _applyFromAppState(doc, persist: true);
+      update();
+    }
+  }
+
   Future<void> fetchPipelineData() async {
     isLoading = true;
     update();
 
-    final CVDocument? latestLocal = _tryReadLatestLocalDocument();
-    if (latestLocal != null) {
-      _applyFromAppState(latestLocal);
+    final CVController? cv = _tryReadCvController();
+    if (cv != null && cv.isUploading && _liveUploadFileName != null) {
+      _applyLiveUpload(_liveUploadFileName!);
+      isLoading = false;
+      update();
+      return;
+    }
+
+    final CVDocument? doc = cv != null ? _resolveDocument(cv) : null;
+    if (doc != null) {
+      await _applyFromAppState(doc, persist: false);
       isLoading = false;
       update();
       return;
@@ -66,38 +114,50 @@ class PipelineController extends GetxController {
         stageTitle = steps[activeStepIndex.clamp(0, steps.length - 1)].title;
         stageBlurb = steps[activeStepIndex.clamp(0, steps.length - 1)].subtitle;
       } catch (_) {
-        latestReport = null;
-        latestJobMatch = null;
-        progressPercent = 0;
-        activeStepIndex = 0;
-        steps = _defaultSteps();
-        stageTitle = 'Upload CV';
-        stageBlurb =
-            'Upload a PDF or Word CV to start ATS screening and job-fit analysis.';
+        _resetEmpty();
       }
     } else {
-      latestReport = null;
-      latestJobMatch = null;
-      progressPercent = 0;
-      activeStepIndex = 0;
-      steps = _defaultSteps();
-      stageTitle = 'Upload CV';
-      stageBlurb =
-          'Upload a PDF or Word CV to start ATS screening and job-fit analysis.';
+      _resetEmpty();
     }
 
     isLoading = false;
     update();
   }
 
-  CVDocument? _tryReadLatestLocalDocument() {
-    if (!Get.isRegistered<CVController>()) return null;
-    return Get.find<CVController>().latestDocument;
+  void _resetEmpty() {
+    latestReport = null;
+    latestJobMatch = null;
+    focusedDocument = null;
+    progressPercent = 0;
+    activeStepIndex = 0;
+    steps = _defaultSteps();
+    stageTitle = 'Upload CV';
+    stageBlurb =
+        'Upload a PDF or Word CV to start ATS screening and job-fit analysis.';
   }
 
   CVController? _tryReadCvController() {
     if (!Get.isRegistered<CVController>()) return null;
     return Get.find<CVController>();
+  }
+
+  CVDocument? _resolveDocument(CVController cv) {
+    if (focusedDocumentId != null) {
+      for (final CVDocument d in cv.documents) {
+        if (d.id == focusedDocumentId) {
+          focusedDocument = d;
+          return d;
+        }
+      }
+    }
+    if (cv.postUploadDocument != null) {
+      focusedDocument = cv.postUploadDocument;
+      focusedDocumentId = cv.postUploadDocument!.id;
+      return cv.postUploadDocument;
+    }
+    focusedDocument = cv.latestDocument;
+    focusedDocumentId = cv.latestDocument?.id;
+    return cv.latestDocument;
   }
 
   static List<PipelineStepInfo> _defaultSteps() {
@@ -130,25 +190,91 @@ class PipelineController extends GetxController {
     ];
   }
 
-  void _applyFromAppState(CVDocument doc) {
+  void _applyLiveUpload(String fileName) {
+    final CVController? cv = _tryReadCvController();
+    final int msg = cv?.messageIndex ?? 0;
+    steps = <PipelineStepInfo>[
+      PipelineStepInfo(
+        title: 'Upload CV',
+        subtitle: 'Uploading $fileName…',
+        icon: Icons.cloud_upload_rounded,
+      ),
+      const PipelineStepInfo(
+        title: 'ATS check',
+        subtitle: 'Waiting for upload…',
+        icon: Icons.fact_check_rounded,
+      ),
+      const PipelineStepInfo(
+        title: 'Target job',
+        subtitle: 'Job title & description',
+        icon: Icons.work_outline_rounded,
+      ),
+      const PipelineStepInfo(
+        title: 'Job fit (RAG)',
+        subtitle: 'CV vs role match score',
+        icon: Icons.compare_arrows_rounded,
+      ),
+      const PipelineStepInfo(
+        title: 'Results',
+        subtitle: 'Scores, gaps & courses',
+        icon: Icons.insights_rounded,
+      ),
+    ];
+    activeStepIndex = 0;
+    showStepProgress = true;
+    progressPercent = ((msg + 1) / CVController.progressMessages.length * 100)
+        .round()
+        .clamp(8, 92);
+    stageTitle = 'Upload CV';
+    stageBlurb = CVController.progressMessages[msg];
+    latestReport = null;
+    latestJobMatch = null;
+    focusedDocument = null;
+  }
+
+  Future<void> _applyFromAppState(
+    CVDocument doc, {
+    required bool persist,
+  }) async {
     final CVController? cv = _tryReadCvController();
     final ATSCheckReport r = doc.report;
     latestReport = r;
-    latestJobMatch = cv?.lastJobMatchReport;
+    focusedDocument = doc;
 
-    final bool uploading = cv?.isUploading ?? false;
-    final bool ragRunning = cv?.isComputingJobMatch ?? false;
+    JobMatchReport? match = cv?.lastJobMatchReport;
+    if (match != null &&
+        cv!.postUploadDocument?.id != doc.id &&
+        cv.postUploadDocument?.fileName != doc.fileName) {
+      match = await JobMatchCache.load(
+        fileName: doc.fileName,
+        documentId: doc.id,
+      );
+    } else if (match == null) {
+      match = await JobMatchCache.load(
+        fileName: doc.fileName,
+        documentId: doc.id,
+      );
+    }
+    latestJobMatch = match;
+
+    final bool isLiveDoc = _isLiveSessionDoc(doc, cv);
+    final bool uploading = isLiveDoc && (cv?.isUploading ?? false);
+    final bool ragRunning = isLiveDoc && (cv?.isComputingJobMatch ?? false);
     final bool hasUpload = true;
     final bool hasAts = !uploading && r.score >= 0;
-    final String jobTitle = cv?.postJobTitle.text.trim() ?? '';
-    final String jobDesc = cv?.postJobDescription.text.trim() ?? '';
-    final JobMatchReport? match = latestJobMatch;
+    final String jobTitle = isLiveDoc ? (cv?.postJobTitle.text.trim() ?? '') : '';
+    final String jobDesc = isLiveDoc ? (cv?.postJobDescription.text.trim() ?? '') : '';
     final bool hasJobTarget = jobTitle.isNotEmpty ||
         jobDesc.isNotEmpty ||
         (match?.jobTitle.isNotEmpty ?? false);
     final bool hasRag = match != null && match.finalScore >= 0;
-    final bool onResults =
-        hasAts && (hasRag || cv?.postUploadStep == PostUploadStep.none);
+    final bool flowDone =
+        isLiveDoc && cv?.postUploadStep == PostUploadStep.none && hasAts;
+
+    final CvPipelineSnapshot? cached = await CvPipelineCache.load(
+      documentId: doc.id,
+      fileName: doc.fileName,
+    );
 
     final String atsSubtitle = uploading
         ? 'Analyzing ${doc.fileName}…'
@@ -196,36 +322,45 @@ class PipelineController extends GetxController {
       ),
     ];
 
-    final List<bool> done = <bool>[
-      hasUpload,
-      hasAts,
-      hasJobTarget,
-      hasRag,
-      hasAts && (hasRag || onResults),
-    ];
-
     showStepProgress = uploading || ragRunning;
+
     if (uploading) {
       activeStepIndex = 0;
       final int msg = cv?.messageIndex ?? 0;
       progressPercent = ((msg + 1) / CVController.progressMessages.length * 100)
           .round()
-          .clamp(5, 95);
+          .clamp(8, 92);
       stageTitle = 'Upload CV';
       stageBlurb = CVController.progressMessages[msg];
-    } else if (!hasAts) {
-      activeStepIndex = 1;
-      progressPercent = 40;
-      stageTitle = 'ATS check';
-      stageBlurb =
-          'Running format rules and keyword scan against ${doc.fileName}.';
     } else if (ragRunning) {
       activeStepIndex = 3;
       progressPercent = 55;
       stageTitle = 'Job fit (RAG)';
       stageBlurb =
           'Comparing your CV skills to ${jobTitle.isNotEmpty ? jobTitle : 'the target role'} using the vector knowledge base.';
+    } else if (isLiveDoc && cv?.postUploadStep == PostUploadStep.atsReview) {
+      activeStepIndex = 1;
+      progressPercent = r.score.clamp(0, 100);
+      stageTitle = 'ATS check';
+      stageBlurb =
+          'ATS complete — score ${r.score}. Continue to enter your target job.';
+    } else if (isLiveDoc && cv?.postUploadStep == PostUploadStep.jobMatch) {
+      activeStepIndex = hasRag ? 4 : (hasJobTarget ? 3 : 2);
+      progressPercent = hasRag
+          ? 100
+          : (hasJobTarget ? 50 : 30);
+      stageTitle = hasRag ? 'Results' : 'Target job';
+      stageBlurb = hasRag
+          ? 'Job fit ${rag!.finalScore}. Review results or return to dashboard.'
+          : 'Enter the job you are applying for, then run Check fit (RAG).';
     } else {
+      final List<bool> done = <bool>[
+        hasUpload,
+        hasAts,
+        hasJobTarget || (cached?.targetJobDone ?? false),
+        hasRag || (cached?.ragDone ?? false),
+        hasRag || flowDone || (cached?.resultsDone ?? false),
+      ];
       final int next = done.indexWhere((bool d) => !d);
       if (next >= 0) {
         activeStepIndex = next;
@@ -243,13 +378,12 @@ class PipelineController extends GetxController {
         if (activeStepIndex == 1) {
           progressPercent = r.score.clamp(0, 100);
         } else if (activeStepIndex == 3) {
-          progressPercent = hasJobTarget ? 25 : 0;
+          progressPercent = hasJobTarget ? 40 : 10;
         } else {
           progressPercent = (activeStepIndex / (steps.length - 1) * 100)
               .round()
               .clamp(0, 100);
         }
-
         stageTitle = steps[activeStepIndex].title;
         stageBlurb = switch (activeStepIndex) {
           0 => 'Choose a PDF or Word file from your device.',
@@ -266,5 +400,36 @@ class PipelineController extends GetxController {
         };
       }
     }
+
+    if (persist && doc.id != null) {
+      _liveUploadFileName = null;
+      await CvPipelineCache.save(
+        CvPipelineSnapshot(
+          documentKey: 'id_${doc.id}',
+          fileName: doc.fileName,
+          activeStepIndex: activeStepIndex,
+          progressPercent: progressPercent,
+          targetJobDone: hasJobTarget,
+          ragDone: hasRag,
+          resultsDone: activeStepIndex >= steps.length,
+        ),
+      );
+    }
+  }
+
+  bool _isLiveSessionDoc(CVDocument doc, CVController? cv) {
+    if (cv == null) return false;
+    if (cv.postUploadDocument?.id == doc.id) return true;
+    if (cv.postUploadDocument?.fileName == doc.fileName &&
+        cv.postUploadStep != PostUploadStep.none) {
+      return true;
+    }
+    if (_liveUploadFileName != null &&
+        doc.fileName == _liveUploadFileName &&
+        (cv.isUploading || cv.latestDocument?.fileName == _liveUploadFileName)) {
+      return true;
+    }
+    return cv.latestDocument?.id == doc.id &&
+        cv.postUploadStep != PostUploadStep.none;
   }
 }

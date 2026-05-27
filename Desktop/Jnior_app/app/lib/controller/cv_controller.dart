@@ -512,6 +512,12 @@ class CVController extends GetxController {
     return sum ~/ documents.length;
   }
 
+  void _notifyPipeline() {
+    if (Get.isRegistered<PipelineController>()) {
+      unawaited(Get.find<PipelineController>().syncLive());
+    }
+  }
+
   void continueFromAtsToJobStep() {
     if (postUploadStep != PostUploadStep.atsReview) {
       return;
@@ -523,6 +529,7 @@ class CVController extends GetxController {
     selectedTargetRole = null;
     unawaited(_loadRagRoles());
     unawaited(_prepareJobMatchStep());
+    _notifyPipeline();
     update();
   }
 
@@ -600,6 +607,7 @@ class CVController extends GetxController {
     final CVDocument? doc = postUploadDocument;
     isComputingJobMatch = true;
     jobMatchError = null;
+    _notifyPipeline();
     update();
 
     try {
@@ -670,6 +678,7 @@ class CVController extends GetxController {
     postJobTitle.clear();
     postCompany.clear();
     postJobDescription.clear();
+    _notifyPipeline();
     update();
   }
 
@@ -710,9 +719,13 @@ class CVController extends GetxController {
     }
 
     _uploadCancelled = false;
+    if (Get.isRegistered<PipelineController>()) {
+      Get.find<PipelineController>().beginNewUpload(name);
+    }
     isUploading = true;
     messageIndex = 0;
     update();
+    _notifyPipeline();
 
     _uploadMessageTimer?.cancel();
     _uploadMessageTimer = Timer.periodic(const Duration(milliseconds: 700), (Timer t) {
@@ -722,6 +735,7 @@ class CVController extends GetxController {
       }
       messageIndex = (messageIndex + 1) % progressMessages.length;
       update();
+      _notifyPipeline();
     });
 
     const Duration totalDelay = Duration(seconds: 2);
@@ -899,6 +913,7 @@ class CVController extends GetxController {
       postUploadDocumentIndex = documents.length - 1;
       postUploadStep = PostUploadStep.atsReview;
       computedJobMatchPercent = null;
+      _notifyPipeline();
       if (Get.isRegistered<PipelineController>()) {
         unawaited(Get.find<PipelineController>().fetchPipelineData());
       }

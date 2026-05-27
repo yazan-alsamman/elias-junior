@@ -7,6 +7,7 @@ import 'package:app/common/widgets/glow_card.dart';
 import 'package:app/common/widgets/gradient_button.dart';
 import 'package:app/common/widgets/gradient_text.dart';
 import 'package:app/controller/cv_controller.dart';
+import 'package:app/services/cv_content_diff.dart';
 import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
 import 'package:flutter/material.dart';
@@ -456,6 +457,7 @@ class _ComparisonResults extends StatelessWidget {
   Widget build(BuildContext context) {
     final ({CVDocument older, CVDocument newer}) pair = _ordered;
     final _ComparisonStats stats = _ComparisonStats.from(pair.older, pair.newer);
+    final CvContentDiff contentDiff = CvContentDiff.between(pair.older, pair.newer);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -470,6 +472,10 @@ class _ComparisonResults extends StatelessWidget {
         ),
         AppSpacing.gapMd,
         _MetricsCompareCard(stats: stats, mobile: mobile),
+        if (contentDiff.hasStructuredChanges) ...<Widget>[
+          AppSpacing.gapMd,
+          _ContentDeltaSection(diff: contentDiff, mobile: mobile),
+        ],
         AppSpacing.gapMd,
         if (stats.keywordsResolved.isNotEmpty)
           _KeywordsDeltaCard(
@@ -561,15 +567,15 @@ class _VerdictBanner extends StatelessWidget {
             ? Icons.trending_up_rounded
             : Icons.trending_down_rounded;
     final String headline = same
-        ? 'No change in ATS score'
+        ? 'No change in ATS accuracy'
         : improved
-            ? 'Your newer CV improved by $delta points'
-            : 'Your newer CV dropped by ${delta.abs()} points';
+            ? 'Newer CV improved by $delta points'
+            : 'Newer CV declined by ${delta.abs()} points';
     final String sub = same
-        ? 'Same ATS score across both versions. Try adjusting keywords or sections.'
+        ? 'Same ATS score across both versions — check added/removed content below.'
         : improved
-            ? 'Great progress! Keep pushing — see metric breakdown below.'
-            : 'Some regressions detected. Check the keyword gaps below.';
+            ? 'What improved in the newer CV is summarized below (skills, sections, keywords).'
+            : 'What regressed in the newer CV — review removed content and new gaps below.';
 
     return GlowCard(
       glowColor: color,
@@ -890,6 +896,132 @@ class _MetricRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Content added / removed
+// ─────────────────────────────────────────────────────────────────────
+
+class _ContentDeltaSection extends StatelessWidget {
+  final CvContentDiff diff;
+  final bool mobile;
+
+  const _ContentDeltaSection({required this.diff, required this.mobile});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlowCard(
+      glowColor: AuroraDark.indigo,
+      padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          GradientText(
+            'What changed between CVs',
+            style: AppType.headlineSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Added in newer · removed from newer (compared oldest → newest upload).',
+            style: AppType.bodySmall.copyWith(color: AuroraDark.textSecondary),
+          ),
+          AppSpacing.gapMd,
+          if (diff.skillsAdded.isNotEmpty || diff.skillsRemoved.isNotEmpty)
+            _DeltaGroup(
+              title: 'Skills',
+              added: diff.skillsAdded,
+              removed: diff.skillsRemoved,
+            ),
+          if (diff.experienceAdded.isNotEmpty || diff.experienceRemoved.isNotEmpty)
+            _DeltaGroup(
+              title: 'Experience',
+              added: diff.experienceAdded,
+              removed: diff.experienceRemoved,
+            ),
+          if (diff.educationAdded.isNotEmpty || diff.educationRemoved.isNotEmpty)
+            _DeltaGroup(
+              title: 'Education',
+              added: diff.educationAdded,
+              removed: diff.educationRemoved,
+            ),
+          if (diff.certificationsAdded.isNotEmpty ||
+              diff.certificationsRemoved.isNotEmpty)
+            _DeltaGroup(
+              title: 'Certifications',
+              added: diff.certificationsAdded,
+              removed: diff.certificationsRemoved,
+            ),
+          if (diff.rulesFixed.isNotEmpty || diff.rulesRegressed.isNotEmpty)
+            _DeltaGroup(
+              title: 'Format rules',
+              added: diff.rulesFixed,
+              removed: diff.rulesRegressed,
+              addedLabel: 'Fixed',
+              removedLabel: 'New issues',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeltaGroup extends StatelessWidget {
+  final String title;
+  final List<String> added;
+  final List<String> removed;
+  final String addedLabel;
+  final String removedLabel;
+
+  const _DeltaGroup({
+    required this.title,
+    required this.added,
+    required this.removed,
+    this.addedLabel = 'Added',
+    this.removedLabel = 'Removed',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(title, style: AppType.titleSmall),
+          if (added.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              addedLabel,
+              style: AppType.labelSmall.copyWith(color: AuroraDark.lime),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: added
+                  .map((String s) => _Pill(label: s, color: AuroraDark.lime))
+                  .toList(),
+            ),
+          ],
+          if (removed.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              removedLabel,
+              style: AppType.labelSmall.copyWith(color: AuroraDark.danger),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: removed
+                  .map((String s) => _Pill(label: s, color: AuroraDark.danger))
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
