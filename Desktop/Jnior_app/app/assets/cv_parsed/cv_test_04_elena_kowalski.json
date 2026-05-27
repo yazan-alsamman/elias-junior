@@ -1,7 +1,7 @@
 {
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
-  "parsedAt": "2026-05-27T12:36:32.372463Z",
+  "parsedAt": "2026-05-27T14:34:13.991076Z",
   "sourceFileName": "cv_test_04_elena_kowalski.pdf",
   "parsedCv": {
     "profile": {

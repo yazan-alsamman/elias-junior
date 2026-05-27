@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Any
 
 from cv_rag.schemas import AnalyzeCVRequest, CVProject, ParsedCV
-from cv_rag.skill_aliases import canonicalize_skill, skills_from_course_title
+from cv_rag.skill_aliases import (
+    canonicalize_skill,
+    extract_skills_from_text,
+    skills_from_course_title,
+)
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -134,6 +138,35 @@ def _infer_education_level(value: Any) -> str | None:
     return None
 
 
+def _enrich_cv_skills(parsed_payload: dict[str, Any]) -> None:
+    """Merge skills from summary, experience bullets, and explicit lists."""
+    profile = parsed_payload.get("profile") or {}
+    text_parts: list[str] = [
+        str(profile.get("summary", "")),
+        str(parsed_payload.get("summary", "")),
+    ]
+    for row in _as_list(parsed_payload.get("work_experience") or parsed_payload.get("experience")):
+        if isinstance(row, dict):
+            text_parts.append(str(row.get("description", "")))
+            text_parts.append(str(row.get("position", "")))
+            text_parts.append(str(row.get("company", "")))
+    blob = " ".join(text_parts)
+    merged = list(
+        dict.fromkeys(
+            _extract_skill_list(parsed_payload.get("skills"))
+            + extract_skills_from_text(blob)
+        )
+    )
+    parsed_payload["skills"] = merged
+
+
+def _job_fields(payload: dict[str, Any]) -> tuple[str, str]:
+    return (
+        str(payload.get("job_title") or payload.get("jobTitle") or "").strip(),
+        str(payload.get("job_description") or payload.get("jobDescription") or "").strip(),
+    )
+
+
 def normalize_analyze_request(payload: dict[str, Any]) -> AnalyzeCVRequest:
     """
     Accept multiple input shapes and normalize into AnalyzeCVRequest.
@@ -192,18 +225,51 @@ def normalize_analyze_request(payload: dict[str, Any]) -> AnalyzeCVRequest:
         )
         parsed_payload["courses"] = courses
         parsed_payload["certifications"] = certifications
-        return AnalyzeCVRequest(target_role=target_role, parsed_cv=ParsedCV(**parsed_payload))
+        _enrich_cv_skills(parsed_payload)
+        job_title, job_description = _job_fields(payload)
+        return AnalyzeCVRequest(
+            target_role=target_role,
+            parsed_cv=ParsedCV(**parsed_payload),
+            job_title=job_title,
+            job_description=job_description,
+        )
 
     courses = _extract_courses(payload.get("courses"))
     certifications = _extract_certifications(payload.get("certifications"))
+    rich_payload: dict[str, Any] = {
+        "full_name": payload.get("full_name") or payload.get("name"),
+        "skills": _merge_course_skills(
+            _extract_skill_list(payload.get("skills")), courses, certifications
+        ),
+        "courses": courses,
+        "certifications": certifications,
+        "projects": _extract_projects(payload.get("projects")),
+        "years_experience": _parse_years_experience(
+            payload.get("years_experience"), payload.get("work_experience")
+        ),
+        "education_level": _infer_education_level(
+            payload.get("education_level") or payload.get("education")
+        ),
+        "work_experience": payload.get("work_experience"),
+        "experience": payload.get("experience"),
+        "profile": payload.get("profile"),
+        "summary": payload.get("summary"),
+    }
+    _enrich_cv_skills(rich_payload)
     parsed_cv = ParsedCV(
-        full_name=payload.get("full_name") or payload.get("name"),
-        skills=_merge_course_skills(_extract_skill_list(payload.get("skills")), courses, certifications),
+        full_name=rich_payload.get("full_name"),
+        skills=rich_payload.get("skills") or [],
         courses=courses,
         certifications=certifications,
-        projects=_extract_projects(payload.get("projects")),
-        years_experience=_parse_years_experience(payload.get("years_experience"), payload.get("work_experience")),
-        education_level=_infer_education_level(payload.get("education_level") or payload.get("education")),
+        projects=rich_payload.get("projects") or [],
+        years_experience=float(rich_payload.get("years_experience") or 0),
+        education_level=rich_payload.get("education_level"),
     )
-    return AnalyzeCVRequest(target_role=str(target_role), parsed_cv=parsed_cv)
+    job_title, job_description = _job_fields(payload)
+    return AnalyzeCVRequest(
+        target_role=str(target_role),
+        parsed_cv=parsed_cv,
+        job_title=job_title,
+        job_description=job_description,
+    )
 

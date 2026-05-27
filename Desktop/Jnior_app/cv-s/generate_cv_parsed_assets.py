@@ -113,21 +113,37 @@ def _section(text: str, headings: list[str]) -> str:
 
 
 def _skills(text: str) -> list[str]:
-    block = _section(text, ["technical skills", "skills", "competencies"])
-    if not block:
-        return []
     out: list[str] = []
-    for part in re.split(r"[,;\n]|(?<=[a-z])\s+(?=[A-Z])", block):
-        t = part.strip()
-        if 2 <= len(t) <= 60 and not re.match(r"^(languages|frameworks|cloud|stack|tools|practices)\s*:", t, re.I):
-            if ":" in t:
-                _, rhs = t.split(":", 1)
-                for piece in re.split(r"[,;]", rhs):
-                    s = piece.strip()
-                    if 2 <= len(s) <= 40:
-                        out.append(s)
-            elif t not in out:
-                out.append(t)
+    in_skills = False
+    for line in text.split("\n"):
+        low = line.strip().lower()
+        if re.search(r"technical skills|^skills\b|competencies", low):
+            in_skills = True
+            continue
+        if in_skills and re.match(
+            r"^(experience|education|projects|certifications|languages|volunteering|professional summary)\b",
+            low,
+        ):
+            break
+        if not in_skills:
+            continue
+        t = line.strip()
+        if not t or re.match(r"^-{3,}$", t):
+            continue
+        if ":" in t:
+            _, rhs = t.split(":", 1)
+            for piece in re.split(r"[,;]", rhs):
+                s = piece.strip()
+                if 2 <= len(s) <= 40:
+                    out.append(s)
+        elif 2 <= len(t) <= 40:
+            out.append(t)
+    if not out:
+        summary = _section(text, ["professional summary", "summary", "profile"])
+        for piece in re.split(r"[,;]", summary):
+            s = piece.strip()
+            if re.match(r"^(python|java|typescript|javascript|go|sql|aws|react)", s, re.I):
+                out.append(s)
     return out[:24]
 
 

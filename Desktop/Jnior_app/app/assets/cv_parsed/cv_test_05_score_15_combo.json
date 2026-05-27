@@ -1,7 +1,7 @@
 {
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
-  "parsedAt": "2026-05-27T12:36:32.393501Z",
+  "parsedAt": "2026-05-27T14:34:14.056301Z",
   "sourceFileName": "cv_test_05_score_15_combo.pdf",
   "parsedCv": {
     "profile": {

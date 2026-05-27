@@ -1,7 +1,7 @@
 {
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
-  "parsedAt": "2026-05-27T12:36:32.321990Z",
+  "parsedAt": "2026-05-27T14:34:13.834131Z",
   "sourceFileName": "cv_test_01_jordan_chen.pdf",
   "parsedCv": {
     "profile": {
@@ -14,7 +14,9 @@
       },
       "summary": "Senior engineer with 9+ years delivering scalable backends, event-driven systems, and developer platforms. Led squads of 5 engineers across fintech and SaaS. Strong in Python, Java, and AWS with a focus on reliability and clear API design."
     },
-    "skills": [],
+    "skills": [
+      "Java"
+    ],
     "experience": [
       {
         "position": "Principal Engineer",

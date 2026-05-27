@@ -76,7 +76,12 @@ class LocalRagService {
       overrideRole: targetRole,
       cvProfile: profile,
     );
-    final Map<String, dynamic> body = _buildAnalyzeBody(profile, role);
+    final Map<String, dynamic> body = _buildAnalyzeBody(
+      profile,
+      role,
+      jobTitle: jobTitle,
+      jobDescription: jobDescription,
+    );
 
     final http.Response res = await http
         .post(
@@ -117,10 +122,14 @@ class LocalRagService {
   /// Rich shape so RAG normalizes skills, years, and education from real CV JSON.
   static Map<String, dynamic> _buildAnalyzeBody(
     ParsedCvProfile profile,
-    String targetRole,
-  ) {
+    String targetRole, {
+    required String jobTitle,
+    required String jobDescription,
+  }) {
     return <String, dynamic>{
       'target_role': targetRole,
+      'job_title': jobTitle,
+      'job_description': jobDescription,
       'name': profile.displayName,
       'skills': profile.skills,
       'certifications': profile.certifications,

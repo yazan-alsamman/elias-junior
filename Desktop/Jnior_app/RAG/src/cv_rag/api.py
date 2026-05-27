@@ -95,11 +95,17 @@ def analyze_cv(payload: dict) -> AnalyzeCVResponse:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    score_breakdown, missing_skills = compute_cv_score(request.parsed_cv, profile)
+    score_breakdown, missing_skills = compute_cv_score(
+        request.parsed_cv,
+        profile,
+        job_description=request.job_description,
+    )
     recommended_courses, recommended_projects = generate_recommendations(profile, missing_skills)
 
+    jd_hint = request.job_description.strip()[:500]
     query = (
         f"Requirements for {request.target_role} in {profile.specialization}. "
+        f"Job description: {jd_hint or 'n/a'}. "
         f"Candidate skills: {', '.join(request.parsed_cv.skills)}"
     )
     try:

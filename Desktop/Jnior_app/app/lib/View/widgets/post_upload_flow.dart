@@ -482,7 +482,8 @@ class _JobStepCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'RAG will compare your CV to: ${controller.ragRolePreviewLabel}',
+                        'RAG compares your CV skills to: ${controller.ragRolePreviewLabel} '
+                        '+ keywords from the job description',
                         style: const TextStyle(
                           color: Color(0xFF0C4A6E),
                           fontWeight: FontWeight.w600,

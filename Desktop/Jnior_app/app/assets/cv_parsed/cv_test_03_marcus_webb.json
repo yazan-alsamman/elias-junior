@@ -1,7 +1,7 @@
 {
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
-  "parsedAt": "2026-05-27T12:36:32.358320Z",
+  "parsedAt": "2026-05-27T14:34:13.947650Z",
   "sourceFileName": "cv_test_03_marcus_webb.pdf",
   "parsedCv": {
     "profile": {
@@ -19,9 +19,11 @@
       "PRD writing",
       "roadmap planning",
       "OKRs",
+      "Jira",
       "Figma",
       "Amplitude",
       "Mixpanel",
+      "SQL (basic)",
       "integrations",
       "billing",
       "onboarding",

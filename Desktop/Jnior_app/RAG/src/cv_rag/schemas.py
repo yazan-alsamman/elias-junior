@@ -22,6 +22,8 @@ class ParsedCV(BaseModel):
 class AnalyzeCVRequest(BaseModel):
     target_role: str = Field(..., description="e.g., backend_engineer")
     parsed_cv: ParsedCV
+    job_title: str = ""
+    job_description: str = ""
 
 
 class RetrievedChunk(BaseModel):

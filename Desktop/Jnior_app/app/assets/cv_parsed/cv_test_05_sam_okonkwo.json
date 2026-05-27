@@ -1,7 +1,7 @@
 {
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
-  "parsedAt": "2026-05-27T12:36:32.383511Z",
+  "parsedAt": "2026-05-27T14:34:14.031962Z",
   "sourceFileName": "cv_test_05_sam_okonkwo.pdf",
   "parsedCv": {
     "profile": {
