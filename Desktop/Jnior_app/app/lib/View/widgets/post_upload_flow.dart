@@ -507,6 +507,7 @@ class _JobStepCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               value: controller.selectedTargetRole,
               decoration: InputDecoration(
                 hintText: 'Auto-detect from job title',
@@ -524,7 +525,10 @@ class _JobStepCard extends StatelessWidget {
               items: <DropdownMenuItem<String>>[
                 const DropdownMenuItem<String>(
                   value: null,
-                  child: Text('Auto-detect from job title'),
+                  child: Text(
+                    'Auto-detect from job title',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 ...controller.ragRoleOptions.map(
                   (RagRoleOption o) => DropdownMenuItem<String>(

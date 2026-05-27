@@ -656,6 +656,9 @@ class CVController extends GetxController {
 
     isComputingJobMatch = false;
     update();
+    if (Get.isRegistered<PipelineController>()) {
+      unawaited(Get.find<PipelineController>().fetchPipelineData());
+    }
   }
 
   void finishPostUploadFlow() {

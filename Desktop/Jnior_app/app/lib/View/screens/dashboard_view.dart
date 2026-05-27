@@ -864,12 +864,16 @@ class _ScoreRing extends StatelessWidget {
         builder: (BuildContext context, double v, _) {
           return Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.hardEdge,
             children: <Widget>[
-              CircularProgressIndicator(
-                value: v,
-                strokeWidth: 5,
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-                backgroundColor: AuroraDark.surfaceAlt,
+              Padding(
+                padding: const EdgeInsets.all(3),
+                child: CircularProgressIndicator(
+                  value: v,
+                  strokeWidth: 5,
+                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                  backgroundColor: AuroraDark.surfaceAlt,
+                ),
               ),
               Text(
                 '$score',

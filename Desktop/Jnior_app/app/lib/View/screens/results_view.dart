@@ -44,7 +44,7 @@ class ResultsView extends StatelessWidget {
         final CVDocument? doc = cv.latestDocument;
         final ResultsAnalysis analysis = ResultsAnalysis.fromDocument(
           doc,
-          jobMatch: cv.lastJobMatchReport,
+          jobMatch: cv.jobMatchForDocument(doc) ?? cv.lastJobMatchReport,
         );
 
         return Scaffold(
@@ -266,39 +266,40 @@ class _CvPreviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    GradientText(
-                      'CV preview',
-                      style: AppType.headlineSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      analysis.documentLabel,
-                      style: AppType.bodyMedium,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+              GradientText(
+                'CV preview',
+                style: AppType.headlineSmall,
               ),
-              _ScoreRingChart(score: analysis.atsScore, mobile: mobile),
-              if (analysis.jobFitFromRag && analysis.jobFitScore != null) ...<Widget>[
-                const SizedBox(width: 12),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+              const SizedBox(height: 4),
+              Text(
+                analysis.documentLabel,
+                style: AppType.bodyMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (analysis.atsScore > 0 ||
+                  (analysis.jobFitFromRag && analysis.jobFitScore != null)) ...<Widget>[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
                   children: <Widget>[
-                    _ScoreRingChart(score: analysis.jobFitScore!, mobile: mobile),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Job fit (RAG)',
-                      style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
-                    ),
+                    if (analysis.atsScore > 0)
+                      _ScoreRingChart(
+                        score: analysis.atsScore,
+                        mobile: mobile,
+                        label: 'ATS',
+                      ),
+                    if (analysis.jobFitFromRag && analysis.jobFitScore != null)
+                      _ScoreRingChart(
+                        score: analysis.jobFitScore!,
+                        mobile: mobile,
+                        label: 'Job fit',
+                      ),
                   ],
                 ),
               ],
@@ -342,12 +343,17 @@ class _CvPreviewCard extends StatelessWidget {
   }
 }
 
-/// Animated radial ring chart for the ATS score (0 → score on entry).
+/// Animated radial ring chart (0 → score on entry).
 class _ScoreRingChart extends StatelessWidget {
   final int score;
   final bool mobile;
+  final String label;
 
-  const _ScoreRingChart({required this.score, required this.mobile});
+  const _ScoreRingChart({
+    required this.score,
+    required this.mobile,
+    this.label = 'ATS',
+  });
 
   Color get _color => score >= 75
       ? AuroraDark.lime
@@ -357,7 +363,9 @@ class _ScoreRingChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double stroke = mobile ? 7.0 : 9.0;
     final double size = mobile ? 84 : 110;
+    final double pad = stroke + 2;
     return SizedBox(
       width: size,
       height: size,
@@ -368,15 +376,19 @@ class _ScoreRingChart extends StatelessWidget {
         builder: (BuildContext context, double v, _) {
           return Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.hardEdge,
             children: <Widget>[
-              CustomPaint(
-                painter: _RingPainter(
-                  progress: v,
-                  color: _color,
-                  trackColor: AuroraDark.surfaceHigh,
-                  strokeWidth: mobile ? 7 : 9,
+              Padding(
+                padding: EdgeInsets.all(pad),
+                child: CustomPaint(
+                  painter: _RingPainter(
+                    progress: v,
+                    color: _color,
+                    trackColor: AuroraDark.surfaceHigh,
+                    strokeWidth: stroke,
+                  ),
+                  size: Size.square(size - pad * 2),
                 ),
-                size: Size.square(size),
               ),
               Column(
                 mainAxisSize: MainAxisSize.min,
@@ -389,7 +401,7 @@ class _ScoreRingChart extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'ATS',
+                    label,
                     style: AppType.labelSmall.copyWith(color: _color),
                   ),
                 ],
@@ -417,8 +429,11 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+
     final Offset c = size.center(Offset.zero);
-    final double r = size.shortestSide / 2 - strokeWidth / 2;
+    final double r = size.shortestSide / 2 - strokeWidth;
 
     final Paint track = Paint()
       ..style = PaintingStyle.stroke
@@ -426,13 +441,18 @@ class _RingPainter extends CustomPainter {
       ..color = trackColor;
     canvas.drawCircle(c, r, track);
 
+    if (progress <= 0) {
+      canvas.restore();
+      return;
+    }
+
     final Paint arc = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..shader = SweepGradient(
         startAngle: -math.pi / 2,
-        endAngle: math.pi * 1.5,
+        endAngle: -math.pi / 2 + progress * 2 * math.pi,
         colors: <Color>[
           color,
           AuroraDark.cyanBright,
@@ -446,20 +466,7 @@ class _RingPainter extends CustomPainter {
       arc,
     );
 
-    if (progress > 0) {
-      final double endAngle = -math.pi / 2 + progress * 2 * math.pi;
-      final Offset dot = Offset(
-        c.dx + r * math.cos(endAngle),
-        c.dy + r * math.sin(endAngle),
-      );
-      canvas.drawCircle(
-        dot,
-        strokeWidth / 2 + 1,
-        Paint()
-          ..color = color.withValues(alpha: 0.8)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-      );
-    }
+    canvas.restore();
   }
 
   @override
