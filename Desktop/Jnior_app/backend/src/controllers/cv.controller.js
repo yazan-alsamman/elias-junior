@@ -606,13 +606,24 @@ async function saveLocalAnalysis(req, res) {
       : [];
     const issues = failures.map((f) => f.issue).filter(Boolean);
 
-    const score =
-      decision === 'PASS'
-        ? 100
-        : Math.min(99, Math.max(5, 100 - failedRulesCount * 10 - (failedBasic ? 25 : 0)));
-
     const PASS_SCORE_THRESHOLD = 70;
-    const scoreDecision = score > PASS_SCORE_THRESHOLD ? 'PASS' : 'FAIL';
+    const clientScore = Number(atsRaw.computed_score);
+    const clientDecision = String(atsRaw.computed_decision || '').toUpperCase();
+    let score;
+    if (Number.isFinite(clientScore) && clientScore > 0 && clientScore <= 100) {
+      score = Math.round(clientScore);
+    } else if (decision === 'PASS') {
+      score = 100;
+    } else {
+      score = Math.min(99, Math.max(5, 100 - failedRulesCount * 10 - (failedBasic ? 25 : 0)));
+    }
+
+    const scoreDecision =
+      clientDecision === 'PASS' || clientDecision === 'FAIL'
+        ? clientDecision
+        : score > PASS_SCORE_THRESHOLD
+          ? 'PASS'
+          : 'FAIL';
 
     const atsFields = {
       score,

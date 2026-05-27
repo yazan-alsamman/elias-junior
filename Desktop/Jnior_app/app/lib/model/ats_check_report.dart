@@ -132,6 +132,35 @@ class ATSCheckReport {
     );
   }
 
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'score': score,
+        'status': status,
+        'checkedAt': checkedAt.toIso8601String(),
+        'keywordsChecked': keywordsChecked,
+        'keywordsTotal': keywordsTotal,
+        'formatScore': formatScore,
+        'sectionMatch': sectionMatch,
+        'estimatedSecondsLeft': estimatedSecondsLeft,
+        'missingKeywords': missingKeywords,
+        'recommendations': recommendations,
+        'suitabilityHeadline': suitabilityHeadline,
+        'issuesSummary': issuesSummary,
+        'engine': engine,
+        'decision': decision,
+        'failedRulesCount': failedRulesCount,
+        'failedBasic': failedBasic,
+        'failures': failures
+            .map(
+              (AtsRuleFailure f) => <String, dynamic>{
+                'ruleId': f.ruleId,
+                'severity': f.severity,
+                'issue': f.issue,
+                'fix': f.fix,
+              },
+            )
+            .toList(),
+      };
+
   const ATSCheckReport({
     required this.score,
     required this.status,

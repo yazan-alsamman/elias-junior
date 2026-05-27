@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:app/common/api_config.dart';
 import 'package:app/common/platform_file_bytes.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
+import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
 import 'package:app/model/parsed_cv_profile.dart';
 import 'package:app/controller/pipeline_controller.dart';
@@ -12,6 +13,7 @@ import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/fake_cv_parser_service.dart';
+import 'package:app/services/local_ats_report_cache.dart';
 import 'package:app/services/local_ats_service.dart';
 import 'package:app/services/local_cv_json_store.dart';
 import 'package:app/services/portfolio_profile_cache.dart';
@@ -94,6 +96,18 @@ class CVController extends GetxController {
     }
   }
 
+  Future<CVDocument> _applyCachedAtsReport(CVDocument doc) async {
+    final ATSCheckReport? cached = await LocalAtsReportCache.loadFor(
+      documentId: doc.id,
+      fileName: doc.fileName,
+    );
+    if (cached != null &&
+        LocalAtsReportCache.shouldPreferLocal(doc.report, cached)) {
+      return doc.copyWith(report: cached);
+    }
+    return doc;
+  }
+
   CVDocument _enrichDocumentWithParse(CVDocument doc) {
     if (doc.parsedProfile != null && doc.parsedProfile!.hasPortfolioData) {
       return doc;
@@ -126,7 +140,9 @@ class CVController extends GetxController {
       final List<CVDocument> list = await CareerApiService.to.documentsList();
       final List<CVDocument> enriched = <CVDocument>[];
       for (final CVDocument doc in list) {
-        enriched.add(_enrichDocumentWithParse(doc));
+        CVDocument row = _enrichDocumentWithParse(doc);
+        row = await _applyCachedAtsReport(row);
+        enriched.add(row);
       }
       documents
         ..clear()
@@ -155,6 +171,7 @@ class CVController extends GetxController {
     lastUploadFileName = null;
     unawaited(PortfolioProfileCache.clear());
     unawaited(LocalCvJsonStore.clear());
+    unawaited(LocalAtsReportCache.clear());
     update();
   }
 
@@ -401,11 +418,17 @@ class CVController extends GetxController {
         );
       }
 
+      final ATSCheckReport localReport = atsResult.toAtsCheckReport();
+      final Map<String, dynamic> atsPayload =
+          Map<String, dynamic>.from(atsResult.raw);
+      atsPayload['computed_score'] = localReport.score;
+      atsPayload['computed_decision'] = localReport.scoreDecision;
+
       final Map<String, dynamic> saved =
           await CareerApiService.to.saveLocalAnalysis(
         originalFileName: name,
         fileType: ext,
-        ats: atsResult.raw,
+        ats: atsPayload,
         fileBytes: fileBytes,
         fileName: name,
         parsedCv: parsedCvMap,
@@ -414,9 +437,12 @@ class CVController extends GetxController {
       );
 
       CVDocument uploaded = CVDocument.fromUploadResponse(saved);
-      if (saved['_saveVia'] == 'upload-analyze') {
-        uploaded = uploaded.copyWith(report: atsResult.toAtsCheckReport());
-      }
+      uploaded = uploaded.copyWith(report: localReport);
+      await LocalAtsReportCache.save(
+        report: localReport,
+        documentId: uploaded.id,
+        fileName: name,
+      );
       if (localParsed != null && localParsed.hasPortfolioData) {
         uploaded = uploaded.copyWithParsed(localParsed);
         if (uploaded.id != null) {
