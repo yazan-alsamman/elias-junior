@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.383511Z",
+  "sourceFileName": "cv_test_05_sam_okonkwo.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "SAM OKONKWO",
+      "headline": "Junior Software Developer",
+      "location": "Atlanta, GA, USA",
+      "contact": {
+        "email": "sam.okonkwo.junior@email.com",
+        "phone": "+1 (404) 555-0523"
+      },
+      "summary": "Recent computer science graduate eager to contribute to full-stack teams. Internship experience building web apps, writing tests, and collaborating in Agile sprints."
+    },
+    "skills": [],
+    "experience": [
+      {
+        "position": "Software Engineering Intern",
+        "company": "Brightline Health Tech",
+        "period": "May 2025 - Aug 2025",
+        "description": "Implemented patient intake form validation and unit tests (React + TypeScript).\nFixed 15+ bugs in scheduling API integration during sprint demos."
+      },
+      {
+        "position": "Teaching Assistant",
+        "company": "Georgia Tech",
+        "period": "Jan 2025 - May 2025",
+        "description": "Led weekly labs for Introduction to Object-Oriented Programming (120 students)."
+      },
+      {
+        "position": "Freelance Web Developer",
+        "company": "Self-employed",
+        "period": "Jun 2024 - Dec 2024",
+        "description": "Built portfolio sites for two local nonprofits using React and Netlify."
+      }
+    ],
+    "education": [
+      {
+        "degree": "B.S. Computer Science",
+        "school": "Georgia Institute of Technology",
+        "period": "2021 - 2025"
+      }
+    ],
+    "projects": [],
+    "certifications": []
+  }
+}

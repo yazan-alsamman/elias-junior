@@ -394,19 +394,16 @@ class CVController extends GetxController {
         fileBytes: bytes,
         fileName: doc.fileName,
       );
-      final ParsedCvProfile? parsed =
-          CvTextHeuristic.parseResumeText(ats.extractedText);
-      if (parsed != null && parsed.hasPortfolioData) {
-        lastPortfolioProfile = parsed;
-        unawaited(PortfolioProfileCache.save(parsed));
-        unawaited(
-          LocalCvJsonStore.saveParsed(
-            sourceFileName: doc.fileName,
-            profile: parsed,
-            documentId: doc.id,
-          ),
-        );
-        return parsed;
+      final FakeCvParserResult? fake =
+          await FakeCvParserService.instance.parseAndStore(
+        fileName: doc.fileName,
+        resumeText: ats.extractedText,
+        documentId: doc.id,
+      );
+      if (fake != null && fake.profile.hasPortfolioData) {
+        lastPortfolioProfile = fake.profile;
+        unawaited(PortfolioProfileCache.save(fake.profile));
+        return fake.profile;
       }
     } catch (_) {
       return null;

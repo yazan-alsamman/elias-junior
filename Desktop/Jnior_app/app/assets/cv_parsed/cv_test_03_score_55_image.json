@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.362328Z",
+  "sourceFileName": "cv_test_03_score_55_image.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "JORDAN CHEN",
+      "headline": "Senior Software Engineer",
+      "location": "Seattle, WA, USA",
+      "contact": {
+        "email": "jordan.chen.dev@email.com",
+        "phone": "+1 (206) 555-0142"
+      },
+      "summary": "Results-driven engineer with 8+ years building distributed systems, APIs, and data pipelines. Led teams of 4-6 engineers; experienced in Python, Go, and cloud platforms (AWS)."
+    },
+    "skills": [],
+    "experience": [
+      {
+        "position": "Staff Software Engineer",
+        "company": "Northwind Analytics",
+        "period": "Jan 2022 - Present",
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p99 latency by 35%.\nDesigned multi-tenant API gateway (FastAPI) for partner integrations."
+      }
+    ],
+    "education": [],
+    "projects": [],
+    "certifications": []
+  }
+}

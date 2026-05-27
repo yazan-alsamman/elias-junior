@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "byFileName": {
+    "cv_test_01_jordan_chen.pdf": "assets/cv_parsed/cv_test_01_jordan_chen.json",
+    "cv_test_01_score_100_strong.pdf": "assets/cv_parsed/cv_test_01_score_100_strong.json",
+    "cv_test_02_priya_sharma.pdf": "assets/cv_parsed/cv_test_02_priya_sharma.json",
+    "cv_test_02_score_65_columns.pdf": "assets/cv_parsed/cv_test_02_score_65_columns.json",
+    "cv_test_02_score_75_columns.pdf": "assets/cv_parsed/cv_test_02_score_75_columns.json",
+    "cv_test_03_marcus_webb.pdf": "assets/cv_parsed/cv_test_03_marcus_webb.json",
+    "cv_test_03_score_55_image.pdf": "assets/cv_parsed/cv_test_03_score_55_image.json",
+    "cv_test_03_score_75_image.pdf": "assets/cv_parsed/cv_test_03_score_75_image.json",
+    "cv_test_04_elena_kowalski.pdf": "assets/cv_parsed/cv_test_04_elena_kowalski.json",
+    "cv_test_04_score_70_no_sections.pdf": "assets/cv_parsed/cv_test_04_score_70_no_sections.json",
+    "cv_test_04_score_80_no_sections.pdf": "assets/cv_parsed/cv_test_04_score_80_no_sections.json",
+    "cv_test_05_sam_okonkwo.pdf": "assets/cv_parsed/cv_test_05_sam_okonkwo.json",
+    "cv_test_05_score_15_combo.pdf": "assets/cv_parsed/cv_test_05_score_15_combo.json",
+    "cv_test_05_score_low_combo.pdf": "assets/cv_parsed/cv_test_05_score_low_combo.json"
+  }
+}

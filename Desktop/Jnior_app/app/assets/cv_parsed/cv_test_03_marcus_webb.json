@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.358320Z",
+  "sourceFileName": "cv_test_03_marcus_webb.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "MARCUS WEBB",
+      "headline": "Product Manager",
+      "location": "New York, NY, USA",
+      "contact": {
+        "email": "marcus.webb.pm@email.com",
+        "phone": "+1 (646) 555-0319"
+      },
+      "summary": "Product manager with 8 years shipping B2B SaaS features from discovery to launch. Partners with engineering and design to deliver measurable outcomes in growth, retention, and platform reliability."
+    },
+    "skills": [
+      "discovery interviews",
+      "PRD writing",
+      "roadmap planning",
+      "OKRs",
+      "Figma",
+      "Amplitude",
+      "Mixpanel",
+      "integrations",
+      "billing",
+      "onboarding",
+      "admin consoles",
+      "engineering leads",
+      "sales",
+      "customer success",
+      "legal"
+    ],
+    "experience": [
+      {
+        "position": "Senior Product Manager",
+        "company": "Relay Cloud",
+        "period": "Apr 2020 - Present",
+        "description": "Launched partner API program contributing 18% net-new ARR in year one.\nReduced enterprise onboarding time from 21 days to 9 days via guided setup."
+      },
+      {
+        "position": "Product Manager",
+        "company": "Signal Desk",
+        "period": "Jan 2017 - Mar 2020",
+        "description": "Owned mobile notifications product; improved D7 retention by 12%.\nRan beta program with 25 design partners for workflow automation module."
+      },
+      {
+        "position": "Associate Product Manager",
+        "company": "Urban Stack",
+        "period": "Jun 2014 - Dec 2016",
+        "description": "Supported marketplace search and ranking experiments with A/B analysis."
+      }
+    ],
+    "education": [
+      {
+        "degree": "M.B.A.",
+        "school": "NYU Stern School of Business",
+        "period": "2012 - 2014"
+      },
+      {
+        "degree": "B.A. Economics",
+        "school": "Boston University",
+        "period": "2008 - 2012"
+      }
+    ],
+    "projects": [],
+    "certifications": []
+  }
+}

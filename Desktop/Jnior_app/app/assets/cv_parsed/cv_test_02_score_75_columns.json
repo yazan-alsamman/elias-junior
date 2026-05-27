@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.351028Z",
+  "sourceFileName": "cv_test_02_score_75_columns.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "JORDAN CHEN",
+      "headline": "Senior Software Engineer",
+      "location": "Seattle, WA, USA",
+      "contact": {
+        "email": "jordan.chen.dev@email.com",
+        "phone": "+1 (206) 555-0142"
+      },
+      "summary": ""
+    },
+    "skills": [],
+    "experience": [
+      {
+        "position": "Staff Software Engineer",
+        "company": "Northwind Analytics",
+        "period": "Jan 2 Right column filler for ATS two-column detection testing.",
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p Additional metrics, ownership, and delivery highlights.\nDesigned multi-tenant API gateway (FastAPI) for partner inte Cross-functional work with product, design, and operations."
+      },
+      {
+        "position": "Senior Backend Engineer",
+        "company": "Harbor Systems Inc.",
+        "period": "Right column filler for ATS two-column detection testing.",
+        "description": "Built microservices in Go and Python on AWS ECS. Additional metrics, ownership, and delivery highlights.\nIntroduced OpenTelemetry tracing; cut MTTR by 40%. Cross-functional work with product, design, and operations."
+      },
+      {
+        "position": "Staff Software Engineer",
+        "company": "Northwind Analytics",
+        "period": "Jan 2 Cross-functional work with product, design, and operations.",
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p Right column filler for ATS two-column detection testing.\nDesigned multi-tenant API gateway (FastAPI) for partner inte Additional metrics, ownership, and delivery highlights."
+      },
+      {
+        "position": "Senior Backend Engineer",
+        "company": "Harbor Systems Inc.",
+        "period": "Cross-functional work with product, design, and operations.",
+        "description": "Built microservices in Go and Python on AWS ECS. Right column filler for ATS two-column detection testing.\nIntroduced OpenTelemetry tracing; cut MTTR by 40%. Additional metrics, ownership, and delivery highlights."
+      },
+      {
+        "position": "Staff Software Engineer",
+        "company": "Northwind Analytics",
+        "period": "Jan 2 Additional metrics, ownership, and delivery highlights.",
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p Cross-functional work with product, design, and operations.\nDesigned multi-tenant API gateway (FastAPI) for partner inte Right column filler for ATS two-column detection testing."
+      },
+      {
+        "position": "Senior Backend Engineer",
+        "company": "Harbor Systems Inc.",
+        "period": "Additional metrics, ownership, and delivery highlights.",
+        "description": "Built microservices in Go and Python on AWS ECS. Cross-functional work with product, design, and operations.\nIntroduced OpenTelemetry tracing; cut MTTR by 40%. Right column filler for ATS two-column detection testing."
+      },
+      {
+        "position": "Staff Software Engineer",
+        "company": "Northwind Analytics",
+        "period": "Jan 2 Right column filler for ATS two-column detection testing.",
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p Additional metrics, ownership, and delivery highlights.\nDesigned multi-tenant API gateway (FastAPI) for partner inte Cross-functional work with product, design, and operations."
+      },
+      {
+        "position": "Senior Backend Engineer",
+        "company": "Harbor Systems Inc.",
+        "period": "Right column filler for ATS two-column detection testing.",
+        "description": "Built microservices in Go and Python on AWS ECS. Additional metrics, ownership, and delivery highlights.\nIntroduced OpenTelemetry tracing; cut MTTR by 40%. Cross-functional work with product, design, and operations."
+      }
+    ],
+    "education": [],
+    "projects": [],
+    "certifications": []
+  }
+}

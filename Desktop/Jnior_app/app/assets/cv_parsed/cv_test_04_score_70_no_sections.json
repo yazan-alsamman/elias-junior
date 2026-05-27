@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.375592Z",
+  "sourceFileName": "cv_test_04_score_70_no_sections.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "JORDAN CHEN",
+      "headline": "Senior Software Engineer",
+      "location": "Seattle, WA, USA",
+      "contact": {
+        "email": "",
+        "phone": "2018-2021"
+      },
+      "summary": "Results-driven engineer with 8+ years building distributed systems, APIs, and data pipelines. Led teams of 4-6 engineers; experienced in Python, Go, and cloud platforms (AWS). Work History: Northwind Analytics 2022-present, Harbor Systems 2018-2021. Studied at university; competencies in Python, AWS, APIs, Agile. Appendix - references available on request. Appendix - portfolio link on personal website."
+    },
+    "skills": [],
+    "experience": [],
+    "education": [],
+    "projects": [],
+    "certifications": []
+  }
+}

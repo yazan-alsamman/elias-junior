@@ -14,8 +14,11 @@ class LocalCvJsonStore {
   LocalCvJsonStore._();
 
   static const String _assetDefault = 'assets/cv_parsed/default_cv.json';
+  static const String _assetIndex = 'assets/cv_parsed/index.json';
   static const String _secureLatestKey = 'careerpath_cv_parsed_latest_envelope';
   static const FlutterSecureStorage _secure = FlutterSecureStorage();
+
+  static Map<String, String>? _bundledIndexByFileName;
 
   /// Public label shown in API payloads (fake parser).
   static const String fakeParserEngine = 'llama-lora-cv-parser-v1';
@@ -76,17 +79,70 @@ class LocalCvJsonStore {
     );
   }
 
-  static Future<Map<String, dynamic>?> _loadAssetEnvelope() async {
+  static String _normalizeUploadFileName(String? fileName) {
+    if (fileName == null || fileName.trim().isEmpty) {
+      return '';
+    }
+    final String base = fileName.split(RegExp(r'[/\\]')).last.trim();
+    return base.toLowerCase();
+  }
+
+  static Future<Map<String, String>> _bundledFileIndex() async {
+    if (_bundledIndexByFileName != null) {
+      return _bundledIndexByFileName!;
+    }
     try {
-      final String raw = await rootBundle.loadString(_assetDefault);
+      final String raw = await rootBundle.loadString(_assetIndex);
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        final Object? by = decoded['byFileName'];
+        if (by is Map<String, dynamic>) {
+          _bundledIndexByFileName = <String, String>{
+            for (final MapEntry<String, dynamic> e in by.entries)
+              e.key.toLowerCase(): e.value.toString(),
+          };
+          return _bundledIndexByFileName!;
+        }
+      }
+    } catch (e) {
+      debugPrint('[LocalCvJsonStore] bundled index: $e');
+    }
+    _bundledIndexByFileName = <String, String>{};
+    return _bundledIndexByFileName!;
+  }
+
+  static Future<Map<String, dynamic>?> _loadAssetEnvelopeAt(String assetPath) async {
+    try {
+      final String raw = await rootBundle.loadString(assetPath);
       final Object? decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
     } catch (e) {
-      debugPrint('[LocalCvJsonStore] asset: $e');
+      debugPrint('[LocalCvJsonStore] asset $assetPath: $e');
     }
     return null;
+  }
+
+  /// Pre-built portfolio JSON shipped for each test CV in `cv-s/` (matched by upload filename).
+  static Future<ParsedCvProfile?> loadBundledForFileName(String? fileName) async {
+    final String key = _normalizeUploadFileName(fileName);
+    if (key.isEmpty) {
+      return null;
+    }
+    final Map<String, String> index = await _bundledFileIndex();
+    String? assetPath = index[key];
+    assetPath ??= 'assets/cv_parsed/${key.replaceAll(RegExp(r'\.pdf$'), '')}.json';
+    final Map<String, dynamic>? envelope = await _loadAssetEnvelopeAt(assetPath);
+    if (envelope == null) {
+      return null;
+    }
+    final ParsedCvProfile? p = _profileFromEnvelope(envelope);
+    return p != null && p.hasPortfolioData ? p : null;
+  }
+
+  static Future<Map<String, dynamic>?> _loadAssetEnvelope() async {
+    return _loadAssetEnvelopeAt(_assetDefault);
   }
 
   static ParsedCvProfile? _profileFromEnvelope(Map<String, dynamic> envelope) {
@@ -147,6 +203,11 @@ class LocalCvJsonStore {
     String? documentId,
     String? fileName,
   }) async {
+    final ParsedCvProfile? bundled = await loadBundledForFileName(fileName);
+    if (bundled != null) {
+      return bundled;
+    }
+
     final Directory? dir = await _folder();
     if (dir != null) {
       if (documentId != null && documentId.isNotEmpty) {

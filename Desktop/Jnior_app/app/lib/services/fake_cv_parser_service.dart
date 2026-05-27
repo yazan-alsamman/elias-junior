@@ -62,9 +62,15 @@ class FakeCvParserService {
     ParsedCvProfile? profile;
     bool fromLocalJson = false;
 
+    profile = await LocalCvJsonStore.loadBundledForFileName(fileName);
+    if (profile != null) {
+      fromLocalJson = true;
+    }
+
     final String text = resumeText.trim();
-    if (text.length > 80) {
+    if ((profile == null || !profile.hasPortfolioData) && text.length > 80) {
       profile = CvTextHeuristic.parseResumeText(text);
+      fromLocalJson = false;
     }
 
     if (profile == null || !profile.hasPortfolioData) {

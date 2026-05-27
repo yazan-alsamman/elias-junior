@@ -2,9 +2,11 @@
 
 The Flutter app mimics the Llama CV parser by reading/writing JSON in this shape.
 
-## Bundled default
+## Bundled profiles (all `cv-s/*.pdf`)
 
-- `app/assets/cv_parsed/default_cv.json` — sample **ALEX RIVERA** profile (shipped with the app).
+- Run `python cv-s/generate_cv_parsed_assets.py` to refresh JSON from PDFs.
+- `app/assets/cv_parsed/index.json` maps upload filename → profile JSON.
+- `app/assets/cv_parsed/default_cv.json` — **Jordan Chen** fallback when nothing is uploaded yet.
 
 ## On device (after upload)
 

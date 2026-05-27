@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.330477Z",
+  "sourceFileName": "cv_test_02_priya_sharma.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "PRIYA SHARMA",
+      "headline": "Data Engineer",
+      "location": "Chicago, IL, USA",
+      "contact": {
+        "email": "priya.sharma.data@email.com",
+        "phone": "+1 (312) 555-0287"
+      },
+      "summary": "Data engineer specializing in reliable pipelines, warehouse modeling, and analytics platforms. 7 years building batch and streaming jobs that power executive dashboards and ML feature stores."
+    },
+    "skills": [],
+    "experience": [
+      {
+        "position": "Senior Data Engineer",
+        "company": "Meridian Retail Group",
+        "period": "Jan 2020 - Present",
+        "description": "Designed lakehouse ingestion for 120+ retail feeds; SLA 99.5% on daily loads.\nBuilt dbt marts consumed by 40 analysts; reduced ad-hoc request backlog by 30%."
+      },
+      {
+        "position": "Data Engineer",
+        "company": "Insight Metrics Co.",
+        "period": "Sep 2016 - Dec 2019",
+        "description": "Migrated on-prem Hadoop jobs to GCP Dataflow and BigQuery.\nImplemented Great Expectations suites for critical revenue tables."
+      },
+      {
+        "position": "Analytics Engineer",
+        "company": "Nova Health Analytics",
+        "period": "Jul 2014 - Aug 2016",
+        "description": "Created patient cohort dashboards in Looker with HIPAA-aware row policies."
+      }
+    ],
+    "education": [
+      {
+        "degree": "B.S. Statistics & Computer Science",
+        "school": "University of Illinois",
+        "period": "2010 - 2014"
+      }
+    ],
+    "projects": [],
+    "certifications": [
+      "Google Professional Data Engineer (2022) dbt Analytics Engineering Certification (2021)"
+    ]
+  }
+}

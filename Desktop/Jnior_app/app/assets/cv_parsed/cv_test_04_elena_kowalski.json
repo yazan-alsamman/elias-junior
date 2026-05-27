@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "engine": "llama-lora-cv-parser-v1",
+  "parsedAt": "2026-05-27T12:36:32.372463Z",
+  "sourceFileName": "cv_test_04_elena_kowalski.pdf",
+  "parsedCv": {
+    "profile": {
+      "name": "ELENA KOWALSKI",
+      "headline": "DevOps / Platform Engineer",
+      "location": "Austin, TX, USA",
+      "contact": {
+        "email": "elena.kowalski.ops@email.com",
+        "phone": "+1 (512) 555-0471"
+      },
+      "summary": "Platform engineer focused on Kubernetes, GitOps, and secure CI/CD. 6+ years automating infrastructure for product teams and improving deployment safety."
+    },
+    "skills": [],
+    "experience": [
+      {
+        "position": "Staff Platform Engineer",
+        "company": "Orbit Security",
+        "period": "Feb 2021 - Present",
+        "description": "Standardized golden paths for 12 services; deploy frequency up 3x with fewer incidents.\nBuilt self-service preview environments per pull request on EKS."
+      },
+      {
+        "position": "DevOps Engineer",
+        "company": "ClearPath Logistics",
+        "period": "May 2018 - Jan 2021",
+        "description": "Migrated Jenkins pipelines to GitHub Actions with reusable workflow library.\nCut cloud spend 22% via rightsizing and S3 lifecycle policies."
+      },
+      {
+        "position": "Systems Administrator",
+        "company": "Lone Star Hosting",
+        "period": "Aug 2015 - Apr 2018",
+        "description": "Managed Linux fleet and monitoring for 200+ customer VMs."
+      }
+    ],
+    "education": [
+      {
+        "degree": "B.S. Information Technology",
+        "school": "Texas State University",
+        "period": "2011 - 2015"
+      }
+    ],
+    "projects": [],
+    "certifications": [
+      "CKA: Certified Kubernetes Administrator (2023) HashiCorp Terraform Associate (2022)"
+    ]
+  }
+}

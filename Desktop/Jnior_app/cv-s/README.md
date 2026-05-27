@@ -12,7 +12,17 @@ Five PDFs for testing **different ATS scores and failure types** in the app (loc
 
 Scores follow the app formula: `100 − 10×failed_rules − 25` if any basic rule fails.
 
-## Regenerate
+## Portfolio JSON (all PDFs in this folder)
+
+Each upload filename maps to bundled profile data in the app:
+
+```powershell
+python cv-s/generate_cv_parsed_assets.py
+```
+
+Writes `app/assets/cv_parsed/<name>.json` and `index.json` (Jordan, Priya, Marcus, Elena, Sam, plus score-variant PDFs).
+
+## Regenerate PDFs
 
 ```powershell
 pip install fpdf2
