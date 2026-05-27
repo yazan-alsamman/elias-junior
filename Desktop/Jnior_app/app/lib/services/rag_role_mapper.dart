@@ -1,4 +1,6 @@
-/// Maps free-text job titles to RAG KB `target_role` ids.
+import 'package:app/model/parsed_cv_profile.dart';
+
+/// Maps free-text job titles + CV content to RAG KB `target_role` ids.
 abstract final class RagRoleMapper {
   static const String defaultRole = 'backend_engineer';
 
@@ -25,47 +27,98 @@ abstract final class RagRoleMapper {
     RagRoleOption('system_administrator', 'System Administrator'),
   ];
 
+  static const List<(String role, List<String> keywords)> _rules =
+      <(String, List<String>)>[
+    ('product_manager_tech', <String>[
+      'product manager',
+      'product owner',
+      'product management',
+      'pm ',
+      'prd',
+      'roadmap',
+    ]),
+    ('data_engineer', <String>['data engineer', 'etl', 'warehouse', 'dbt']),
+    ('data_scientist', <String>['data scientist', 'machine learning scientist']),
+    ('data_analyst', <String>['data analyst', 'business analyst', 'analytics']),
+    ('ml_engineer', <String>['ml engineer', 'machine learning', 'deep learning']),
+    ('ai_engineer', <String>['ai engineer', 'generative ai', 'llm']),
+    ('devops_engineer', <String>['devops', 'platform engineer', 'ci/cd', 'sre']),
+    ('site_reliability_engineer', <String>['site reliability']),
+    ('cloud_engineer', <String>['cloud engineer', 'aws architect', 'azure engineer']),
+    ('cybersecurity_analyst', <String>['security analyst', 'cybersecurity', 'soc ']),
+    ('penetration_tester', <String>['penetration', 'pentest', 'ethical hacker']),
+    ('qa_engineer', <String>['qa ', 'quality assurance', 'test engineer']),
+    ('frontend_engineer', <String>['frontend', 'front-end', 'react', 'vue', 'angular']),
+    ('mobile_app_developer', <String>['mobile', 'ios', 'android', 'flutter dev']),
+    ('fullstack_engineer', <String>['full stack', 'fullstack', 'full-stack']),
+    ('backend_engineer', <String>[
+      'backend',
+      'back-end',
+      'api engineer',
+      'software engineer',
+      'java dev',
+    ]),
+    ('database_administrator', <String>['dba', 'database admin']),
+    ('network_engineer', <String>['network engineer', 'network admin']),
+    ('ui_ux_designer', <String>['ux ', 'ui ', 'designer', 'user experience']),
+    ('system_administrator', <String>['sysadmin', 'system admin']),
+  ];
+
+  /// Priority: manual KB role → job title/description → CV headline/skills → default.
   static String inferTargetRole({
     required String jobTitle,
     String jobDescription = '',
     String? overrideRole,
+    ParsedCvProfile? cvProfile,
   }) {
     if (overrideRole != null && overrideRole.trim().isNotEmpty) {
       return _normalizeRoleId(overrideRole);
     }
-    final String haystack =
+
+    final String jobHaystack =
         '${jobTitle.toLowerCase()} ${jobDescription.toLowerCase()}';
-    final List<(String role, List<String> keywords)> rules =
-        <(String, List<String>)>[
-      ('product_manager_tech', <String>['product manager', 'product owner', 'pm ']),
-      ('data_engineer', <String>['data engineer', 'etl', 'warehouse', 'dbt']),
-      ('data_scientist', <String>['data scientist', 'machine learning scientist']),
-      ('data_analyst', <String>['data analyst', 'business analyst', 'analytics']),
-      ('ml_engineer', <String>['ml engineer', 'machine learning', 'deep learning']),
-      ('ai_engineer', <String>['ai engineer', 'generative ai', 'llm']),
-      ('devops_engineer', <String>['devops', 'platform engineer', 'ci/cd']),
-      ('site_reliability_engineer', <String>['sre', 'site reliability']),
-      ('cloud_engineer', <String>['cloud engineer', 'aws architect', 'azure engineer']),
-      ('cybersecurity_analyst', <String>['security analyst', 'cybersecurity', 'soc ']),
-      ('penetration_tester', <String>['penetration', 'pentest', 'ethical hacker']),
-      ('qa_engineer', <String>['qa ', 'quality assurance', 'test engineer']),
-      ('frontend_engineer', <String>['frontend', 'front-end', 'react', 'vue', 'angular']),
-      ('mobile_app_developer', <String>['mobile', 'ios', 'android', 'flutter dev']),
-      ('fullstack_engineer', <String>['full stack', 'fullstack', 'full-stack']),
-      ('backend_engineer', <String>['backend', 'back-end', 'api engineer', 'java dev']),
-      ('database_administrator', <String>['dba', 'database admin']),
-      ('network_engineer', <String>['network engineer', 'network admin']),
-      ('ui_ux_designer', <String>['ux ', 'ui ', 'designer', 'user experience']),
-      ('system_administrator', <String>['sysadmin', 'system admin']),
-    ];
-    for (final (String role, List<String> keys) in rules) {
+    final String? fromJob = _matchRole(jobHaystack, allowWeak: false);
+    if (fromJob != null) {
+      return fromJob;
+    }
+
+    if (cvProfile != null) {
+      final String cvHaystack = <String>[
+        cvProfile.headline,
+        cvProfile.summary,
+        cvProfile.skills.join(' '),
+        ...cvProfile.experience.map(
+          (Map<String, dynamic> e) =>
+              '${e['position'] ?? ''} ${e['company'] ?? ''}',
+        ),
+      ].join(' ').toLowerCase();
+      final String? fromCv = _matchRole(cvHaystack, allowWeak: true);
+      if (fromCv != null) {
+        return fromCv;
+      }
+    }
+
+    if (jobTitle.trim().isNotEmpty) {
+      return defaultRole;
+    }
+    return defaultRole;
+  }
+
+  static String? _matchRole(String haystack, {required bool allowWeak}) {
+    if (haystack.trim().isEmpty) {
+      return null;
+    }
+    for (final (String role, List<String> keys) in _rules) {
       for (final String key in keys) {
         if (haystack.contains(key)) {
           return role;
         }
       }
     }
-    return defaultRole;
+    if (!allowWeak) {
+      return null;
+    }
+    return null;
   }
 
   static String _normalizeRoleId(String raw) {

@@ -74,11 +74,9 @@ class LocalRagService {
       jobTitle: jobTitle,
       jobDescription: jobDescription,
       overrideRole: targetRole,
+      cvProfile: profile,
     );
-    final Map<String, dynamic> body = <String, dynamic>{
-      'target_role': role,
-      'parsed_cv': profile.toPortfolioJson(),
-    };
+    final Map<String, dynamic> body = _buildAnalyzeBody(profile, role);
 
     final http.Response res = await http
         .post(
@@ -113,6 +111,48 @@ class LocalRagService {
       jobTitle: jobTitle,
       company: company,
       jobDescription: jobDescription,
+    );
+  }
+
+  /// Rich shape so RAG normalizes skills, years, and education from real CV JSON.
+  static Map<String, dynamic> _buildAnalyzeBody(
+    ParsedCvProfile profile,
+    String targetRole,
+  ) {
+    return <String, dynamic>{
+      'target_role': targetRole,
+      'name': profile.displayName,
+      'skills': profile.skills,
+      'certifications': profile.certifications,
+      'work_experience': profile.experience
+          .map(
+            (Map<String, dynamic> e) => <String, dynamic>{
+              'position': e['position'] ?? '',
+              'company': e['company'] ?? '',
+              'duration': e['period'] ?? e['duration'] ?? '',
+              'description': e['description'] ?? '',
+            },
+          )
+          .toList(),
+      'education': profile.education,
+      'projects': profile.projects,
+      'parsed_cv': profile.toPortfolioJson(),
+    };
+  }
+
+  static String previewTargetRole({
+    required String jobTitle,
+    String jobDescription = '',
+    String? overrideRole,
+    ParsedCvProfile? cvProfile,
+  }) {
+    return RagRoleMapper.labelForRole(
+      RagRoleMapper.inferTargetRole(
+        jobTitle: jobTitle,
+        jobDescription: jobDescription,
+        overrideRole: overrideRole,
+        cvProfile: cvProfile,
+      ),
     );
   }
 }

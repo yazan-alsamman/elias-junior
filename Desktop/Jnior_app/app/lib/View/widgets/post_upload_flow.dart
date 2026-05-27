@@ -427,8 +427,9 @@ class _JobStepCard extends StatelessWidget {
             if (narrow) ...<Widget>[
               _LabeledField(
                 label: 'Job title',
-                hint: 'e.g. Senior Frontend Developer',
+                hint: 'e.g. Product Manager',
                 controller: controller.postJobTitle,
+                onChanged: (_) => controller.refreshRagRolePreview(),
               ),
               const SizedBox(height: 12),
               _LabeledField(
@@ -443,8 +444,9 @@ class _JobStepCard extends StatelessWidget {
                   Expanded(
                     child: _LabeledField(
                       label: 'Job title',
-                      hint: 'e.g. Senior Frontend Developer',
+                      hint: 'e.g. Product Manager',
                       controller: controller.postJobTitle,
+                      onChanged: (_) => controller.refreshRagRolePreview(),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -463,7 +465,36 @@ class _JobStepCard extends StatelessWidget {
               hint: 'Paste the posting so we can compare your CV to it…',
               controller: controller.postJobDescription,
               maxLines: 4,
+              onChanged: (_) => controller.refreshRagRolePreview(),
             ),
+            if (controller.ragRolePreviewLabel.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    const Icon(Icons.psychology_outlined, color: Color(0xFF0369A1), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'RAG will compare your CV to: ${controller.ragRolePreviewLabel}',
+                        style: const TextStyle(
+                          color: Color(0xFF0C4A6E),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             const Text(
               'KB role (RAG)',
@@ -505,7 +536,7 @@ class _JobStepCard extends StatelessWidget {
                   ? null
                   : (String? v) {
                       controller.selectedTargetRole = v;
-                      controller.update();
+                      controller.refreshRagRolePreview();
                     },
             ),
             const SizedBox(height: 14),
@@ -670,7 +701,11 @@ class _RagJobMatchPanel extends StatelessWidget {
                 (String s) => Chip(
                   label: Text(
                     s.replaceAll('_', ' '),
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF9A3412),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   backgroundColor: const Color(0xFFFFF7ED),
                   side: const BorderSide(color: Color(0xFFFDBA74)),
@@ -726,12 +761,14 @@ class _LabeledField extends StatelessWidget {
   final String hint;
   final TextEditingController controller;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   const _LabeledField({
     required this.label,
     required this.hint,
     required this.controller,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   @override
@@ -751,6 +788,7 @@ class _LabeledField extends StatelessWidget {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          onChanged: onChanged,
           style: const TextStyle(color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: hint,

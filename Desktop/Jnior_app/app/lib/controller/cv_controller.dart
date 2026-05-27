@@ -80,6 +80,8 @@ class CVController extends GetxController {
   String? selectedTargetRole;
   List<RagRoleOption> ragRoleOptions = RagRoleMapper.knownRoles;
   String? jobMatchError;
+  String ragRolePreviewLabel = '';
+  ParsedCvProfile? _jobMatchProfileCache;
 
   late final TextEditingController postJobTitle;
   late final TextEditingController postCompany;
@@ -520,6 +522,27 @@ class CVController extends GetxController {
     jobMatchError = null;
     selectedTargetRole = null;
     unawaited(_loadRagRoles());
+    unawaited(_prepareJobMatchStep());
+    update();
+  }
+
+  Future<void> _prepareJobMatchStep() async {
+    final CVDocument? doc = postUploadDocument;
+    _jobMatchProfileCache = await _profileForJobMatch(doc);
+    if (postJobTitle.text.trim().isEmpty &&
+        _jobMatchProfileCache?.headline.isNotEmpty == true) {
+      postJobTitle.text = _jobMatchProfileCache!.headline;
+    }
+    refreshRagRolePreview();
+  }
+
+  void refreshRagRolePreview() {
+    ragRolePreviewLabel = LocalRagService.previewTargetRole(
+      jobTitle: postJobTitle.text.trim(),
+      jobDescription: postJobDescription.text.trim(),
+      overrideRole: selectedTargetRole,
+      cvProfile: _jobMatchProfileCache,
+    );
     update();
   }
 
@@ -587,12 +610,14 @@ class CVController extends GetxController {
         );
       }
 
-      final ParsedCvProfile? profile = await _profileForJobMatch(doc);
+      final ParsedCvProfile? profile =
+          _jobMatchProfileCache ?? await _profileForJobMatch(doc);
       if (profile == null || !profile.hasPortfolioData) {
         throw RagServiceException(
           'No parsed CV JSON yet. Upload a CV from cv-s/ or wait for parse to finish.',
         );
       }
+      _jobMatchProfileCache = profile;
 
       final JobMatchReport report = await LocalRagService.instance.analyzeCv(
         profile: profile,
