@@ -211,41 +211,8 @@ class PortfolioController extends GetxController {
     }
     final CVController cv = Get.find<CVController>();
 
-    await LocalCvJsonStore.ensureSeeded();
-    final ParsedCvProfile? jsonFolder = await LocalCvJsonStore.loadLatest();
-    if (jsonFolder != null && jsonFolder.hasPortfolioData) {
-      cv.lastPortfolioProfile = jsonFolder;
-      _applyParsedToPortfolio(jsonFolder);
-      return;
-    }
-
-    final FakeCvParserResult? fake =
-        await FakeCvParserService.instance.loadForPortfolio();
-    if (fake != null && fake.profile.hasPortfolioData) {
-      cv.lastPortfolioProfile = fake.profile;
-      _applyParsedToPortfolio(fake.profile);
-      return;
-    }
-
-    final ParsedCvProfile? disk = await PortfolioProfileCache.load();
-    if (disk != null && disk.hasPortfolioData) {
-      cv.lastPortfolioProfile = disk;
-      _applyParsedToPortfolio(disk);
-      return;
-    }
-
     if (cv.documents.isEmpty) {
       await cv.loadFromApi();
-    }
-    if (cv.documents.isEmpty) {
-      if (tryReparseLastUpload) {
-        final ParsedCvProfile? reparsed =
-            await cv.reparseLastUploadForPortfolio();
-        if (reparsed != null) {
-          _applyParsedToPortfolio(reparsed);
-        }
-      }
-      return;
     }
 
     final List<CVDocument> sorted = List<CVDocument>.from(cv.documents)
@@ -280,12 +247,46 @@ class PortfolioController extends GetxController {
         return;
       }
     }
+
+    final ParsedCvProfile? disk = await PortfolioProfileCache.load();
+    if (disk != null &&
+        disk.hasPortfolioData &&
+        !LocalCvJsonStore.isBundledDemoProfile(disk)) {
+      _applyParsedToPortfolio(disk);
+      return;
+    }
+
+    if (cv.documents.isEmpty) {
+      await LocalCvJsonStore.ensureSeeded();
+      final ParsedCvProfile? demo = await LocalCvJsonStore.loadLatest();
+      if (demo != null && demo.hasPortfolioData) {
+        _applyParsedToPortfolio(demo);
+      }
+    }
   }
 
   Future<ParsedCvProfile?> _resolveParsedForDocument(CVDocument doc) async {
     ParsedCvProfile? parsed = doc.parsedProfile;
+    if (parsed != null &&
+        parsed.hasPortfolioData &&
+        !LocalCvJsonStore.isBundledDemoProfile(parsed)) {
+      return parsed;
+    }
+
+    parsed = await LocalCvJsonStore.loadForDocument(
+      documentId: doc.id,
+      fileName: doc.fileName,
+    );
     if (parsed != null && parsed.hasPortfolioData) {
       return parsed;
+    }
+
+    if (Get.isRegistered<CVController>()) {
+      final ParsedCvProfile? fromFile =
+          await Get.find<CVController>().reparseDocumentForPortfolio(doc);
+      if (fromFile != null) {
+        return fromFile;
+      }
     }
 
     if (doc.id != null) {

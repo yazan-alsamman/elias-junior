@@ -37,6 +37,7 @@ class FakeCvParserService {
       resumeText: resumeText,
       persist: true,
       documentId: documentId,
+      allowBundledFallback: false,
     );
   }
 
@@ -47,6 +48,7 @@ class FakeCvParserService {
       resumeText: '',
       persist: false,
       documentId: null,
+      allowBundledFallback: true,
     );
   }
 
@@ -55,6 +57,7 @@ class FakeCvParserService {
     required String resumeText,
     required bool persist,
     String? documentId,
+    required bool allowBundledFallback,
   }) async {
     ParsedCvProfile? profile;
     bool fromLocalJson = false;
@@ -65,13 +68,21 @@ class FakeCvParserService {
     }
 
     if (profile == null || !profile.hasPortfolioData) {
-      profile = await LocalCvJsonStore.loadLatest();
+      profile = await LocalCvJsonStore.loadForDocument(
+        documentId: documentId,
+        fileName: fileName,
+      );
       fromLocalJson = profile != null;
     }
 
-    if (profile == null || !profile.hasPortfolioData) {
+    if ((profile == null || !profile.hasPortfolioData) && allowBundledFallback) {
+      profile = await LocalCvJsonStore.loadLatest(allowDemo: true);
+      fromLocalJson = profile != null;
+    }
+
+    if ((profile == null || !profile.hasPortfolioData) && allowBundledFallback) {
       await LocalCvJsonStore.ensureSeeded();
-      profile = await LocalCvJsonStore.loadLatest();
+      profile = await LocalCvJsonStore.loadLatest(allowDemo: true);
       fromLocalJson = true;
     }
 

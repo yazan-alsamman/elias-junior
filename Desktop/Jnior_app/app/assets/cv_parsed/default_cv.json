@@ -2,17 +2,17 @@
   "version": 1,
   "engine": "llama-lora-cv-parser-v1",
   "parsedAt": "2026-05-26T12:00:00.000Z",
-  "sourceFileName": "sample_cv.pdf",
+  "sourceFileName": "cv_test_01_jordan_chen.pdf",
   "parsedCv": {
     "profile": {
-      "name": "ALEX RIVERA",
+      "name": "JORDAN CHEN",
       "headline": "Senior Software Engineer",
-      "location": "San Francisco, CA, USA",
+      "location": "Seattle, WA, USA",
       "contact": {
-        "email": "alex.rivera.dev@email.com",
-        "phone": "+1 (415) 555-0198"
+        "email": "jordan.chen.dev@email.com",
+        "phone": "+1 (206) 555-0142"
       },
-      "summary": "Results-driven software engineer with 8+ years building distributed systems, APIs, and data pipelines. Led teams of 4-6 engineers; experienced in Python, Go, and cloud platforms (AWS). Passionate about reliability, observability, and mentoring."
+      "summary": "Results-driven engineer with 8+ years building distributed systems, APIs, and data pipelines. Led teams of 4-6 engineers; experienced in Python, Go, and cloud platforms (AWS)."
     },
     "skills": [
       "Python",
@@ -22,33 +22,21 @@
       "FastAPI",
       "Django",
       "React",
-      "PostgreSQL",
-      "Redis",
-      "Kafka",
+      "Node.js",
       "AWS",
+      "ECS",
+      "Lambda",
+      "RDS",
       "Docker",
       "Kubernetes",
-      "Terraform",
-      "CI/CD"
+      "Terraform"
     ],
     "experience": [
       {
         "position": "Staff Software Engineer",
         "company": "Northwind Analytics",
         "period": "Jan 2022 - Present",
-        "description": "Own the ingestion pipeline processing 50M+ events/day; reduced p99 latency by 35%."
-      },
-      {
-        "position": "Senior Backend Engineer",
-        "company": "Harbor Systems Inc.",
-        "period": "Mar 2018 - Dec 2021",
-        "description": "Built microservices in Go and Python on AWS ECS; cut MTTR by 40% with OpenTelemetry."
-      },
-      {
-        "position": "Software Engineer",
-        "company": "Delta Labs",
-        "period": "Jun 2015 - Feb 2018",
-        "description": "REST APIs and batch jobs in Python/Django; improved release cadence from monthly to weekly."
+        "description": "Own ingestion pipeline processing 50M+ events/day; reduced p99 latency by 35%. Designed multi-tenant API gateway (FastAPI) for partner integrations."
       }
     ],
     "education": [
@@ -58,17 +46,12 @@
         "period": "2013 - 2015"
       },
       {
-        "degree": "B.S. Mathematics & Minor in CS",
+        "degree": "B.S. Mathematics & CS",
         "school": "UT Austin",
         "period": "2009 - 2013"
       }
     ],
-    "projects": [
-      {
-        "name": "streamkit-cli",
-        "description": "OSS CLI for Kafka topic inspection (800+ GitHub stars)"
-      }
-    ],
+    "projects": [],
     "certifications": []
   }
 }

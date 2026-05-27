@@ -37,8 +37,30 @@ class LocalCvJsonStore {
     }
   }
 
+  /// True for the old bundled demo profile (must not override a real upload).
+  static bool isBundledDemoProfile(ParsedCvProfile profile) {
+    final String name = profile.displayName.toUpperCase();
+    final String email = profile.email.toLowerCase();
+    return name.contains('ALEX RIVERA') ||
+        email.contains('alex.rivera.dev@email.com');
+  }
+
   /// Copy bundled sample JSON into storage when folder is empty.
-  static Future<void> ensureSeeded() async {
+  static Future<void> ensureSeeded({bool onlyWhenEmpty = true}) async {
+    if (onlyWhenEmpty) {
+      final Directory? dir = await _folder();
+      if (dir != null) {
+        final bool hasUserJson = dir
+            .listSync()
+            .whereType<File>()
+            .where((File f) => f.path.endsWith('.json') && !f.path.endsWith('latest.json'))
+            .length >
+            1;
+        if (hasUserJson) {
+          return;
+        }
+      }
+    }
     final ParsedCvProfile? existing = await loadLatest();
     if (existing != null && existing.hasPortfolioData) {
       return;
@@ -120,8 +142,62 @@ class LocalCvJsonStore {
     await latest.writeAsString(jsonStr);
   }
 
+  /// JSON saved for a specific Mongo document / filename.
+  static Future<ParsedCvProfile?> loadForDocument({
+    String? documentId,
+    String? fileName,
+  }) async {
+    final Directory? dir = await _folder();
+    if (dir != null) {
+      if (documentId != null && documentId.isNotEmpty) {
+        for (final FileSystemEntity e in dir.listSync()) {
+          if (e is! File || !e.path.endsWith('.json')) {
+            continue;
+          }
+          if (!e.path.contains('id_$documentId')) {
+            continue;
+          }
+          try {
+            final Map<String, dynamic> envelope =
+                jsonDecode(await e.readAsString()) as Map<String, dynamic>;
+            final ParsedCvProfile? p = _profileFromEnvelope(envelope);
+            if (p != null) {
+              return p;
+            }
+          } catch (_) {
+            continue;
+          }
+        }
+      }
+      if (fileName != null && fileName.trim().isNotEmpty) {
+        final String safe = fileName
+            .replaceAll(RegExp(r'[^\w.\-]+'), '_')
+            .replaceAll(RegExp(r'_+'), '_');
+        for (final FileSystemEntity e in dir.listSync()) {
+          if (e is! File || !e.path.endsWith('.json')) {
+            continue;
+          }
+          if (!e.path.contains(safe)) {
+            continue;
+          }
+          try {
+            final Map<String, dynamic> envelope =
+                jsonDecode(await e.readAsString()) as Map<String, dynamic>;
+            final ParsedCvProfile? p = _profileFromEnvelope(envelope);
+            if (p != null && !isBundledDemoProfile(p)) {
+              return p;
+            }
+          } catch (_) {
+            continue;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /// Most recent parse (upload or seed).
-  static Future<ParsedCvProfile?> loadLatest() async {
+  static Future<ParsedCvProfile?> loadLatest({bool allowDemo = true}) async {
     final Directory? dir = await _folder();
     if (dir != null) {
       final File latest = File('${dir.path}${Platform.pathSeparator}latest.json');
@@ -130,7 +206,7 @@ class LocalCvJsonStore {
           final Map<String, dynamic> envelope =
               jsonDecode(await latest.readAsString()) as Map<String, dynamic>;
           final ParsedCvProfile? p = _profileFromEnvelope(envelope);
-          if (p != null) {
+          if (p != null && (allowDemo || !isBundledDemoProfile(p))) {
             return p;
           }
         } catch (e) {
@@ -145,7 +221,7 @@ class LocalCvJsonStore {
         final Map<String, dynamic> envelope =
             jsonDecode(secure) as Map<String, dynamic>;
         final ParsedCvProfile? p = _profileFromEnvelope(envelope);
-        if (p != null) {
+        if (p != null && (allowDemo || !isBundledDemoProfile(p))) {
           return p;
         }
       } catch (_) {
@@ -153,9 +229,11 @@ class LocalCvJsonStore {
       }
     }
 
-    final Map<String, dynamic>? asset = await _loadAssetEnvelope();
-    if (asset != null) {
-      return _profileFromEnvelope(asset);
+    if (allowDemo) {
+      final Map<String, dynamic>? asset = await _loadAssetEnvelope();
+      if (asset != null) {
+        return _profileFromEnvelope(asset);
+      }
     }
     return null;
   }

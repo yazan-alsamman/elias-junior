@@ -85,9 +85,11 @@ class CVController extends GetxController {
   }
 
   Future<void> _restorePortfolioCache() async {
-    await LocalCvJsonStore.ensureSeeded();
-    final ParsedCvProfile? fromJson = await LocalCvJsonStore.loadLatest();
-    if (fromJson != null && fromJson.hasPortfolioData) {
+    final ParsedCvProfile? fromJson =
+        await LocalCvJsonStore.loadLatest(allowDemo: false);
+    if (fromJson != null &&
+        fromJson.hasPortfolioData &&
+        !LocalCvJsonStore.isBundledDemoProfile(fromJson)) {
       lastPortfolioProfile = fromJson;
       return;
     }
@@ -287,6 +289,40 @@ class CVController extends GetxController {
     unawaited(LocalAtsReportCache.clear());
     unawaited(LocalCvFileCache.clear());
     update();
+  }
+
+  /// Parse one stored CV file (by Mongo id / filename) for portfolio preview.
+  Future<ParsedCvProfile?> reparseDocumentForPortfolio(CVDocument doc) async {
+    final Uint8List? bytes = await LocalCvFileCache.load(
+      documentId: doc.id,
+      fileName: doc.fileName,
+    );
+    if (bytes == null || bytes.isEmpty) {
+      return null;
+    }
+    try {
+      final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+        fileBytes: bytes,
+        fileName: doc.fileName,
+      );
+      final ParsedCvProfile? parsed =
+          CvTextHeuristic.parseResumeText(ats.extractedText);
+      if (parsed != null && parsed.hasPortfolioData) {
+        lastPortfolioProfile = parsed;
+        unawaited(PortfolioProfileCache.save(parsed));
+        unawaited(
+          LocalCvJsonStore.saveParsed(
+            sourceFileName: doc.fileName,
+            profile: parsed,
+            documentId: doc.id,
+          ),
+        );
+        return parsed;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   /// Re-run local ATS + JSON store (no file picker).

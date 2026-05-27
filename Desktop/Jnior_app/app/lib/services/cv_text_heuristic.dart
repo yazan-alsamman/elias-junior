@@ -226,10 +226,20 @@ abstract final class CvTextHeuristic {
       if (t.isEmpty) {
         continue;
       }
-      final String chunk =
-          t.contains(':') && !t.toLowerCase().startsWith('http')
-              ? t.split(':').skip(1).join(':')
-              : t;
+      String chunk = t;
+      if (t.contains(':') && !t.toLowerCase().startsWith('http')) {
+        final List<String> parts = t.split(':');
+        if (parts.length > 1) {
+          final String label = parts.first.trim().toLowerCase();
+          if (label == 'languages' ||
+              label == 'frameworks' ||
+              label == 'cloud' ||
+              label == 'tools' ||
+              label == 'skills') {
+            chunk = parts.sublist(1).join(':');
+          }
+        }
+      }
       for (final String p in chunk.split(RegExp(r'[,;|/]+'))) {
         final String s = p.trim();
         if (s.length > 1 && s.length < 80) {
