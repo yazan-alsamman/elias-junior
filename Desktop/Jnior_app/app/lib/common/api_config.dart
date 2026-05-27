@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 /// 1. `baseUrl`        — Hostinger Express backend (auth, Mongo storage, portfolio).
 /// 2. `atsBaseUrl`     — local Uvicorn ATS rule engine (port 8000) on your PC.
 /// 3. `cvParserBaseUrl` — local Uvicorn CV parser (Llama 3.2 + LoRA, port 8001) on your PC.
+/// 4. `ragBaseUrl`       — local CV RAG job-fit API (port 8002) on your PC.
 ///
 /// Override at build time:
 ///   flutter run --dart-define=API_BASE=...        \
@@ -27,6 +28,10 @@ class ApiConfig {
   );
   static const String _fromEnvParser = String.fromEnvironment(
     'CV_PARSER_URL',
+    defaultValue: '',
+  );
+  static const String _fromEnvRag = String.fromEnvironment(
+    'RAG_URL',
     defaultValue: '',
   );
 
@@ -53,6 +58,12 @@ class ApiConfig {
   static String get cvParserBaseUrl {
     if (_fromEnvParser.isNotEmpty) return _fromEnvParser;
     return _localLoopback(8001);
+  }
+
+  /// Local RAG job-fit API (port 8002). Use `10.0.2.2` on Android emulator.
+  static String get ragBaseUrl {
+    if (_fromEnvRag.isNotEmpty) return _fromEnvRag;
+    return _localLoopback(8002);
   }
 
   /// 127.0.0.1 everywhere except Android emulator (which sees host as 10.0.2.2).

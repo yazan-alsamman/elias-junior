@@ -5,7 +5,8 @@ Architecture:
 ```
 Flutter app ──auth/storage──► Hostinger:  https://rosybrown-jackal-732122.hostingersite.com
             ──ATS check─────► local PC :8000   (FastAPI rule engine)
-            ──CV parse──────► local PC :8001   (Llama 3.2 + LoRA)
+            ──CV parse──────► local PC :8001   (Llama 3.2 + LoRA, optional)
+            ──Job fit RAG─────► local PC :8002   (Chroma + OpenAI embeddings)
 ```
 
 The Hostinger backend never reaches your PC for ATS. The app runs the ATS check
@@ -18,22 +19,38 @@ heuristic runs automatically.
 
 ---
 
-## 1. Start the two local features
+## 1. Start local services
 
-From the repo root (the folder that contains `app/`, `backend/`, `cv-parser/`):
+From the repo root (the folder that contains `app/`, `backend/`, `RAG/`):
 
 ```powershell
 .\start-local-dev.cmd
 ```
 
-You should see two new windows:
+You should see three windows:
 
 | Window | URL | Test |
 |---|---|---|
 | `Uvicorn - ATS :8000` | <http://127.0.0.1:8000/> | `{"service":"ATS Rule Engine","status":"ok"}` |
-| `Uvicorn - CV Parser :8001` | <http://127.0.0.1:8001/health> | `{"status":"ok"}` (after model load) |
+| `Uvicorn - RAG :8002` | <http://127.0.0.1:8002/health> | `openai_configured` + `chroma_ready` true |
+| `Node - CareerPath API :3003` | <http://127.0.0.1:3003/health> | API up |
 
-> The parser takes a while to load the model the first time. ATS works immediately.
+### One-time RAG setup (`RAG/`)
+
+```powershell
+cd RAG
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e .
+copy env.local.example env.local
+# Edit env.local: OPENAI_API_KEY=sk-...
+python -m cv_rag.cli ingest
+```
+
+`ingest` fills the Chroma vector DB from `RAG/kb/specializations/`. Without it,
+job-fit in the app returns **RAG not ready**.
+
+> CV parser (:8001) is optional. ATS (:8000) and RAG (:8002) are what the app uses for real scores today.
 
 ### One-time CV parser setup (Hugging Face)
 
@@ -77,12 +94,14 @@ The app already knows:
 |---|---|
 | Main API | `https://rosybrown-jackal-732122.hostingersite.com` (hard-coded) |
 | ATS | `http://127.0.0.1:8000` (or `10.0.2.2:8000` on Android emulator) |
+| RAG job-fit | `http://127.0.0.1:8002` (or `10.0.2.2:8002` on Android emulator) |
 | CV parser | `http://127.0.0.1:8001` (or `10.0.2.2:8001` on Android emulator) |
 
 ### Optional overrides at build time
 
 ```powershell
 flutter run --dart-define=ATS_URL=http://192.168.1.20:8000 ^
+            --dart-define=RAG_URL=http://192.168.1.20:8002 ^
             --dart-define=CV_PARSER_URL=http://192.168.1.20:8001
 ```
 

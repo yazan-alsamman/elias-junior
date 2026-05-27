@@ -3,6 +3,8 @@ import 'package:app/common/custom_card.dart';
 import 'package:app/controller/cv_controller.dart';
 import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
+import 'package:app/model/job_match_report.dart';
+import 'package:app/services/rag_role_mapper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -462,6 +464,50 @@ class _JobStepCard extends StatelessWidget {
               controller: controller.postJobDescription,
               maxLines: 4,
             ),
+            const SizedBox(height: 12),
+            const Text(
+              'KB role (RAG)',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              value: controller.selectedTargetRole,
+              decoration: InputDecoration(
+                hintText: 'Auto-detect from job title',
+                filled: true,
+                fillColor: Colors.white,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                ),
+              ),
+              items: <DropdownMenuItem<String>>[
+                const DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('Auto-detect from job title'),
+                ),
+                ...controller.ragRoleOptions.map(
+                  (RagRoleOption o) => DropdownMenuItem<String>(
+                    value: o.role,
+                    child: Text(o.label, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
+              onChanged: controller.isComputingJobMatch
+                  ? null
+                  : (String? v) {
+                      controller.selectedTargetRole = v;
+                      controller.update();
+                    },
+            ),
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: controller.isComputingJobMatch
@@ -475,7 +521,9 @@ class _JobStepCard extends StatelessWidget {
                     )
                   : const Icon(Icons.compare_arrows_rounded, size: 20),
               label: Text(
-                controller.isComputingJobMatch ? 'Checking fit…' : 'Check fit with this job',
+                controller.isComputingJobMatch
+                    ? 'RAG analyzing…'
+                    : 'Check fit (RAG + vector KB)',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               style: FilledButton.styleFrom(
@@ -485,68 +533,29 @@ class _JobStepCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            if (controller.computedJobMatchPercent != null) ...<Widget>[
-              const SizedBox(height: 16),
+            if (controller.jobMatchError != null) ...<Widget>[
+              const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFDBA74)),
                 ),
-                child: Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 52,
-                      height: 52,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: <Widget>[
-                          CircularProgressIndicator(
-                            value: controller.computedJobMatchPercent! / 100,
-                            strokeWidth: 5,
-                            backgroundColor: const Color(0xFFE5E7EB),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
-                          ),
-                          Text(
-                            '${controller.computedJobMatchPercent}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            controller.computedJobMatchPercent! >= 70
-                                ? 'Good alignment — your CV supports this role'
-                                : controller.computedJobMatchPercent! >= 50
-                                    ? 'Moderate fit — tighten keywords toward this posting'
-                                    : 'Gap vs role — strengthen relevant experience & skills',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Heuristic match (demo). Refine job title & description for a sharper read.',
-                            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  controller.jobMatchError!,
+                  style: const TextStyle(
+                    color: Color(0xFF9A3412),
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
+            ],
+            if (controller.lastJobMatchReport != null) ...<Widget>[
+              const SizedBox(height: 16),
+              _RagJobMatchPanel(report: controller.lastJobMatchReport!),
             ],
             const SizedBox(height: 16),
             OutlinedButton(
@@ -560,6 +569,153 @@ class _JobStepCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RagJobMatchPanel extends StatelessWidget {
+  const _RagJobMatchPanel({required this.report});
+
+  final JobMatchReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool suitable = report.isSuitable;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: suitable ? const Color(0xFFF0FDF4) : const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: suitable ? const Color(0xFFBBF7D0) : const Color(0xFFBFDBFE),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    CircularProgressIndicator(
+                      value: report.finalScore / 100,
+                      strokeWidth: 5,
+                      backgroundColor: const Color(0xFFE5E7EB),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        suitable ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                      ),
+                    ),
+                    Text(
+                      '${report.finalScore}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      suitable ? 'Suitable for this role' : 'Gaps vs target role',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      report.suitabilityHeadline,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                    Text(
+                      'RAG · ${RagRoleMapper.labelForRole(report.targetRole)} · ${report.specialization}',
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (report.missingSkills.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            const Text(
+              'Skill gaps',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: report.missingSkills.take(12).map(
+                (String s) => Chip(
+                  label: Text(
+                    s.replaceAll('_', ' '),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  backgroundColor: const Color(0xFFFFF7ED),
+                  side: const BorderSide(color: Color(0xFFFDBA74)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ).toList(),
+            ),
+          ],
+          if (report.recommendedCourses.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            const Text(
+              'Recommended courses',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...report.recommendedCourses.take(4).map(
+              (String c) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('• $c', style: const TextStyle(fontSize: 13, height: 1.35)),
+              ),
+            ),
+          ],
+          if (report.retrievedEvidence.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 10),
+            const Text(
+              'KB evidence (vector retrieval)',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              report.retrievedEvidence.first.content.length > 160
+                  ? '${report.retrievedEvidence.first.content.substring(0, 160)}…'
+                  : report.retrievedEvidence.first.content,
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.35),
+            ),
+          ],
+        ],
       ),
     );
   }

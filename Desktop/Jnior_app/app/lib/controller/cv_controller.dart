@@ -6,6 +6,7 @@ import 'package:app/common/platform_file_bytes.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
+import 'package:app/model/job_match_report.dart';
 import 'package:app/model/parsed_cv_profile.dart';
 import 'package:app/controller/pipeline_controller.dart';
 import 'package:app/controller/portfolio_controller.dart';
@@ -17,7 +18,10 @@ import 'package:app/services/ats_score_ledger.dart';
 import 'package:app/services/local_ats_report_cache.dart';
 import 'package:app/services/local_ats_service.dart';
 import 'package:app/services/local_cv_file_cache.dart';
+import 'package:app/services/job_match_cache.dart';
 import 'package:app/services/local_cv_json_store.dart';
+import 'package:app/services/local_rag_service.dart';
+import 'package:app/services/rag_role_mapper.dart';
 import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -72,6 +76,10 @@ class CVController extends GetxController {
   int? postUploadDocumentIndex;
   bool isComputingJobMatch = false;
   int? computedJobMatchPercent;
+  JobMatchReport? lastJobMatchReport;
+  String? selectedTargetRole;
+  List<RagRoleOption> ragRoleOptions = RagRoleMapper.knownRoles;
+  String? jobMatchError;
 
   late final TextEditingController postJobTitle;
   late final TextEditingController postCompany;
@@ -336,6 +344,16 @@ class CVController extends GetxController {
       documents
         ..clear()
         ..addAll(enriched);
+      if (documents.isNotEmpty) {
+        final CVDocument latest = documents.first;
+        final JobMatchReport? cached = await JobMatchCache.load(
+          fileName: latest.fileName,
+          documentId: latest.id,
+        );
+        if (cached != null) {
+          lastJobMatchReport = cached;
+        }
+      }
       update();
       final int stale = documents
           .where((CVDocument d) => LocalAtsReportCache.isPlaceholderScore(d.report))
@@ -377,6 +395,8 @@ class CVController extends GetxController {
     unawaited(LocalAtsReportCache.clear());
     unawaited(AtsScoreLedger.clear());
     unawaited(LocalCvFileCache.clear());
+    unawaited(JobMatchCache.clear());
+    lastJobMatchReport = null;
     update();
   }
 
@@ -496,21 +516,119 @@ class CVController extends GetxController {
     }
     postUploadStep = PostUploadStep.jobMatch;
     computedJobMatchPercent = null;
+    lastJobMatchReport = null;
+    jobMatchError = null;
+    selectedTargetRole = null;
+    unawaited(_loadRagRoles());
     update();
+  }
+
+  Future<void> _loadRagRoles() async {
+    ragRoleOptions = await LocalRagService.instance.fetchRoles();
+    update();
+  }
+
+  Future<ParsedCvProfile?> _profileForJobMatch(CVDocument? doc) async {
+    if (doc?.parsedProfile != null && doc!.parsedProfile!.hasPortfolioData) {
+      return doc.parsedProfile;
+    }
+    if (lastPortfolioProfile != null && lastPortfolioProfile!.hasPortfolioData) {
+      return lastPortfolioProfile;
+    }
+    if (doc != null) {
+      final ParsedCvProfile? reparsed = await reparseDocumentForPortfolio(doc);
+      if (reparsed != null && reparsed.hasPortfolioData) {
+        return reparsed;
+      }
+      final ParsedCvProfile? bundled = await LocalCvJsonStore.loadBundledForFileName(
+        doc.fileName,
+      );
+      if (bundled != null) {
+        return bundled;
+      }
+    }
+    return LocalCvJsonStore.loadLatest(allowDemo: false);
+  }
+
+  JobMatchReport? jobMatchForDocument(CVDocument? doc) {
+    if (doc == null) {
+      return lastJobMatchReport;
+    }
+    if (lastJobMatchReport != null &&
+        (lastJobMatchReport!.jobTitle == postJobTitle.text.trim() ||
+            doc.fileName == postUploadDocument?.fileName)) {
+      return lastJobMatchReport;
+    }
+    return null;
+  }
+
+  Future<JobMatchReport?> loadCachedJobMatch(CVDocument doc) async {
+    return JobMatchCache.load(
+      fileName: doc.fileName,
+      documentId: doc.id,
+    );
   }
 
   Future<void> runTargetJobMatch() async {
     if (postJobTitle.text.trim().isEmpty) {
+      AuroraSnack.error('Target job', 'Enter a job title to run RAG job fit.');
       return;
     }
-    isComputingJobMatch = true;
-    update();
-    await Future<void>.delayed(const Duration(milliseconds: 950));
     final CVDocument? doc = postUploadDocument;
-    final int base = doc?.report.score ?? 55;
-    final int titleN = postJobTitle.text.length.clamp(0, 20);
-    final int jdN = (postJobDescription.text.length ~/ 35).clamp(0, 22);
-    computedJobMatchPercent = (base ~/ 2 + titleN + jdN).clamp(38, 96);
+    isComputingJobMatch = true;
+    jobMatchError = null;
+    update();
+
+    try {
+      final bool ready = await LocalRagService.instance.isReady();
+      if (!ready) {
+        throw RagServiceException(
+          'RAG offline. Run .\\start-local-dev.cmd, set OPENAI_API_KEY in RAG/env.local, then: python -m cv_rag.cli ingest',
+        );
+      }
+
+      final ParsedCvProfile? profile = await _profileForJobMatch(doc);
+      if (profile == null || !profile.hasPortfolioData) {
+        throw RagServiceException(
+          'No parsed CV JSON yet. Upload a CV from cv-s/ or wait for parse to finish.',
+        );
+      }
+
+      final JobMatchReport report = await LocalRagService.instance.analyzeCv(
+        profile: profile,
+        jobTitle: postJobTitle.text.trim(),
+        company: postCompany.text.trim(),
+        jobDescription: postJobDescription.text.trim(),
+        targetRole: selectedTargetRole,
+      );
+
+      lastJobMatchReport = report;
+      computedJobMatchPercent = report.finalScore;
+      if (doc != null) {
+        final int idx = documents.indexWhere((CVDocument d) => d.id == doc.id);
+        if (idx >= 0) {
+          documents[idx] = documents[idx].copyWithParsed(profile);
+        }
+        unawaited(
+          JobMatchCache.save(
+            fileName: doc.fileName,
+            report: report,
+            documentId: doc.id,
+          ),
+        );
+      }
+    } on RagServiceException catch (e) {
+      jobMatchError = e.message;
+      computedJobMatchPercent = null;
+      lastJobMatchReport = null;
+      AuroraSnack.error('Job fit (RAG)', e.message, duration: const Duration(seconds: 8));
+    } catch (e) {
+      jobMatchError = e.toString();
+      computedJobMatchPercent = null;
+      lastJobMatchReport = null;
+      AuroraSnack.error('Job fit (RAG)', '$e', duration: const Duration(seconds: 8));
+    }
+
     isComputingJobMatch = false;
     update();
   }
@@ -519,6 +637,7 @@ class CVController extends GetxController {
     postUploadStep = PostUploadStep.none;
     postUploadDocumentIndex = null;
     computedJobMatchPercent = null;
+    jobMatchError = null;
     isComputingJobMatch = false;
     postJobTitle.clear();
     postCompany.clear();
