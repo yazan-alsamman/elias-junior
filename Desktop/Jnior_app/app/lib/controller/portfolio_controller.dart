@@ -10,6 +10,8 @@ import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
 import 'package:app/services/github_og_image_service.dart';
 import 'package:app/services/portfolio_custom_image_codec.dart';
+import 'package:app/services/fake_cv_parser_service.dart';
+import 'package:app/services/local_cv_json_store.dart';
 import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -208,6 +210,22 @@ class PortfolioController extends GetxController {
       return;
     }
     final CVController cv = Get.find<CVController>();
+
+    await LocalCvJsonStore.ensureSeeded();
+    final ParsedCvProfile? jsonFolder = await LocalCvJsonStore.loadLatest();
+    if (jsonFolder != null && jsonFolder.hasPortfolioData) {
+      cv.lastPortfolioProfile = jsonFolder;
+      _applyParsedToPortfolio(jsonFolder);
+      return;
+    }
+
+    final FakeCvParserResult? fake =
+        await FakeCvParserService.instance.loadForPortfolio();
+    if (fake != null && fake.profile.hasPortfolioData) {
+      cv.lastPortfolioProfile = fake.profile;
+      _applyParsedToPortfolio(fake.profile);
+      return;
+    }
 
     final ParsedCvProfile? disk = await PortfolioProfileCache.load();
     if (disk != null && disk.hasPortfolioData) {
@@ -453,11 +471,19 @@ class PortfolioController extends GetxController {
     _rebuildPreviewDataOnly();
     update();
     if (_parsedFromCv == null || !_parsedFromCv!.hasPortfolioData) {
-      AuroraSnack.warning(
-        'CV data missing',
-        'Upload your CV on the Dashboard (ATS must be running), then generate preview again.',
-        duration: const Duration(seconds: 7),
-      );
+      final FakeCvParserResult? fallback =
+          await FakeCvParserService.instance.loadForPortfolio();
+      if (fallback != null && fallback.profile.hasPortfolioData) {
+        _applyParsedToPortfolio(fallback.profile);
+        _rebuildPreviewDataOnly();
+        update();
+      } else {
+        AuroraSnack.warning(
+          'CV data missing',
+          'Upload a CV on the Dashboard once, or add JSON under assets/cv_parsed/.',
+          duration: const Duration(seconds: 7),
+        );
+      }
     }
     _scheduleOgResolution();
   }

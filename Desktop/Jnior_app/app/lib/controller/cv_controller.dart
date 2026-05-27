@@ -11,7 +11,9 @@ import 'package:app/controller/portfolio_controller.dart';
 import 'package:app/services/auth_api_service.dart';
 import 'package:app/services/career_api_service.dart';
 import 'package:app/services/cv_text_heuristic.dart';
+import 'package:app/services/fake_cv_parser_service.dart';
 import 'package:app/services/local_ats_service.dart';
+import 'package:app/services/local_cv_json_store.dart';
 import 'package:app/services/portfolio_profile_cache.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +82,12 @@ class CVController extends GetxController {
   }
 
   Future<void> _restorePortfolioCache() async {
+    await LocalCvJsonStore.ensureSeeded();
+    final ParsedCvProfile? fromJson = await LocalCvJsonStore.loadLatest();
+    if (fromJson != null && fromJson.hasPortfolioData) {
+      lastPortfolioProfile = fromJson;
+      return;
+    }
     final ParsedCvProfile? cached = await PortfolioProfileCache.load();
     if (cached != null && cached.hasPortfolioData) {
       lastPortfolioProfile = cached;
@@ -99,6 +107,13 @@ class CVController extends GetxController {
         final CVDocument enriched = doc.copyWithParsed(parsed);
         lastPortfolioProfile = parsed;
         unawaited(PortfolioProfileCache.save(parsed));
+        unawaited(
+          LocalCvJsonStore.saveParsed(
+            sourceFileName: doc.fileName,
+            profile: parsed,
+            documentId: doc.id,
+          ),
+        );
         return enriched;
       }
     }
@@ -139,35 +154,37 @@ class CVController extends GetxController {
     lastUploadBytes = null;
     lastUploadFileName = null;
     unawaited(PortfolioProfileCache.clear());
+    unawaited(LocalCvJsonStore.clear());
     update();
   }
 
-  /// Re-run local ATS text extract + heuristic parse (no file picker).
+  /// Re-run local ATS + JSON store (no file picker).
   Future<ParsedCvProfile?> reparseLastUploadForPortfolio() async {
     final Uint8List? bytes = lastUploadBytes;
     final String? fileName = lastUploadFileName;
-    if (bytes == null || bytes.isEmpty || fileName == null || fileName.isEmpty) {
-      return null;
-    }
-    try {
-      final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
-        fileBytes: bytes,
-        fileName: fileName,
-      );
-      final String text = ats.extractedText;
-      if (text.length < 40) {
-        return null;
+    String resumeText = '';
+    if (bytes != null &&
+        bytes.isNotEmpty &&
+        fileName != null &&
+        fileName.isNotEmpty) {
+      try {
+        final LocalAtsResult ats = await LocalAtsService.instance.analyzeFile(
+          fileBytes: bytes,
+          fileName: fileName,
+        );
+        resumeText = ats.extractedText;
+      } catch (_) {
+        /* use JSON folder fallback */
       }
-      final ParsedCvProfile? parsed = CvTextHeuristic.parseResumeText(text);
-      if (parsed != null && parsed.hasPortfolioData) {
-        lastPortfolioProfile = parsed;
-        unawaited(PortfolioProfileCache.save(parsed));
-        return parsed;
-      }
-    } catch (_) {
-      return null;
     }
-    return null;
+    final FakeCvParserResult? fake = await FakeCvParserService.instance
+        .parseAndStore(fileName: fileName ?? 'cv.pdf', resumeText: resumeText);
+    if (fake != null && fake.profile.hasPortfolioData) {
+      lastPortfolioProfile = fake.profile;
+      unawaited(PortfolioProfileCache.save(fake.profile));
+      return fake.profile;
+    }
+    return await LocalCvJsonStore.loadLatest();
   }
 
   @override
@@ -363,40 +380,25 @@ class CVController extends GetxController {
       }
 
       final String resumeText = atsResult.extractedText;
-      Map<String, dynamic>? parsedCvMap;
-      ParsedCvProfile? localParsed;
-      String parseEngine = 'text-heuristic-v1';
 
-      if (resumeText.length > 80) {
-        localParsed = CvTextHeuristic.parseResumeText(resumeText);
-        if (localParsed != null && localParsed.hasPortfolioData) {
-          parsedCvMap = localParsed.toPortfolioJson();
-        }
-      } else if (resumeText.isEmpty) {
-        AuroraSnack.warning(
-          'CV text',
-          'Restart ATS (start-local-dev.cmd) so the engine returns résumé text for your portfolio.',
-          duration: const Duration(seconds: 7),
+      final FakeCvParserResult? fakeParse =
+          await FakeCvParserService.instance.parseAndStore(
+        fileName: name,
+        resumeText: resumeText,
+        fileBytes: fileBytes,
+      );
+
+      Map<String, dynamic>? parsedCvMap = fakeParse?.parsedCvMap;
+      ParsedCvProfile? localParsed = fakeParse?.profile;
+      String parseEngine =
+          fakeParse?.parseEngine ?? LocalCvJsonStore.fakeParserEngine;
+
+      if (resumeText.isEmpty && fakeParse != null && fakeParse.fromLocalJson) {
+        AuroraSnack.info(
+          'CV parser (local)',
+          'Using saved CV JSON from your device. Upload again after restarting ATS for live text extract.',
+          duration: const Duration(seconds: 5),
         );
-      }
-
-      if (parsedCvMap == null) {
-        try {
-          final Map<String, dynamic> extracted =
-              await CareerApiService.to.extractParseCvFile(
-            fileBytes: fileBytes,
-            fileName: name,
-          );
-          final Object? raw = extracted['parsedCv'];
-          if (raw is Map<String, dynamic>) {
-            parsedCvMap = raw;
-            localParsed = ParsedCvProfile.fromJson(parsedCvMap);
-            parseEngine =
-                (extracted['parseEngine'] as String?) ?? parseEngine;
-          }
-        } catch (_) {
-          /* Hostinger may lack extract-parse; client ATS text is enough */
-        }
       }
 
       final Map<String, dynamic> saved =
@@ -417,15 +419,14 @@ class CVController extends GetxController {
       }
       if (localParsed != null && localParsed.hasPortfolioData) {
         uploaded = uploaded.copyWithParsed(localParsed);
-      } else if ((uploaded.parsedProfile == null ||
-              !uploaded.parsedProfile!.hasPortfolioData) &&
-          resumeText.length > 80) {
-        final ParsedCvProfile? fromText =
-            CvTextHeuristic.parseResumeText(resumeText);
-        if (fromText != null) {
-          uploaded = uploaded.copyWithParsed(fromText);
+        if (uploaded.id != null) {
+          await LocalCvJsonStore.saveParsed(
+            sourceFileName: name,
+            profile: localParsed,
+            documentId: uploaded.id,
+          );
         }
-      } else if (parsedCvMap != null && uploaded.parsedProfile == null) {
+      } else if (parsedCvMap != null) {
         uploaded = uploaded.copyWithParsed(
           ParsedCvProfile.fromJson(parsedCvMap),
         );
