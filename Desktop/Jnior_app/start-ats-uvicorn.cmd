@@ -5,6 +5,17 @@
 set ROOT=%~dp0
 set ATS_DIR=%ROOT%Junior_code\ats-rule-engine copy
 
+curl.exe -s -m 2 http://127.0.0.1:8010/ 2>nul | findstr /C:"ATS Rule Engine" >nul
+if %ERRORLEVEL%==0 (
+  echo.
+  echo  ATS is already running on http://127.0.0.1:8010
+  echo  Close the other "Uvicorn - ATS :8010" window if you want to restart.
+  echo  Or run:  taskkill /F /PID ^(see netstat -ano ^| findstr :8010^)
+  echo.
+  pause
+  exit /b 0
+)
+
 echo Starting ATS on Uvicorn: http://127.0.0.1:8010
 echo OpenAPI docs: http://127.0.0.1:8010/docs
 echo Health:      http://127.0.0.1:8010/
