@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:app/common/app_colors.dart';
 import 'package:app/common/app_spacing.dart';
 import 'package:app/common/app_typography.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/common/widgets/blur_pill.dart';
-import 'package:app/common/widgets/glow_card.dart';
 import 'package:app/common/widgets/gradient_button.dart';
 import 'package:app/common/widgets/gradient_text.dart';
 import 'package:app/controller/cv_controller.dart';
@@ -15,31 +12,26 @@ import 'package:app/model/cv_document.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-/// Entry point — opens the compare modal.
+/// Entry point — full-screen picker (avoids bottom-sheet ANR on Android).
 Future<void> showCompareCvDialog(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
-    builder: (BuildContext _) => const _CompareCvSheet(),
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (BuildContext _) => const _CompareCvPage(),
+    ),
   );
 }
 
-class _CompareCvSheet extends StatefulWidget {
-  const _CompareCvSheet();
+class _CompareCvPage extends StatefulWidget {
+  const _CompareCvPage();
 
   @override
-  State<_CompareCvSheet> createState() => _CompareCvSheetState();
+  State<_CompareCvPage> createState() => _CompareCvPageState();
 }
 
-class _CompareCvSheetState extends State<_CompareCvSheet> {
+class _CompareCvPageState extends State<_CompareCvPage> {
   int? _firstIndex;
   int? _secondIndex;
-  bool _showResults = false;
-  bool _loadingCompare = false;
-  CvCompareResult? _compareResult;
 
   List<CVDocument> get _docs {
     final CVController c = Get.find<CVController>();
@@ -76,196 +68,131 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
     return null;
   }
 
-  Future<void> _runCompare() async {
-    if (!_canCompare || _loadingCompare) return;
+  void _runCompare() {
+    if (!_canCompare) return;
     final List<CVDocument> docs = List<CVDocument>.from(_docs);
     final CVDocument cvA = docs[_firstIndex!];
     final CVDocument cvB = docs[_secondIndex!];
-    setState(() => _loadingCompare = true);
-    await Future<void>.delayed(Duration.zero);
-    if (!mounted) return;
-    try {
-      final CvCompareResult result = await compareCvsAsync(cvA, cvB).timeout(
-        const Duration(seconds: 20),
-      );
-      if (!mounted) return;
-      setState(() {
-        _compareResult = result;
-        _loadingCompare = false;
-      });
-      await Future<void>.delayed(Duration.zero);
-      if (!mounted) return;
-      setState(() => _showResults = true);
-    } on TimeoutException {
-      if (!mounted) return;
-      setState(() => _loadingCompare = false);
-      AuroraSnack.error(
-        'Compare timed out',
-        'Comparison took too long. Try again with two smaller CV files.',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loadingCompare = false);
-      AuroraSnack.error(
-        'Compare failed',
-        'Could not compare these CVs. Try again in a moment.',
-      );
-    }
-  }
-
-  void _backToSelection() {
-    setState(() {
-      _showResults = false;
-      _compareResult = null;
-    });
+    final CvCompareResult result = compareDocuments(cvA, cvB);
+    final bool mobile = MediaQuery.sizeOf(context).width < 700;
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext _) => _CompareResultsPage(
+          result: result,
+          mobile: mobile,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final List<CVDocument> docs = _docs;
-    final Size screen = MediaQuery.sizeOf(context);
-    final bool mobile = screen.width < 700;
+    final bool mobile = MediaQuery.sizeOf(context).width < 700;
 
-    // Fixed-height sheet avoids web hit-test errors from DraggableScrollableSheet.
-    return FractionallySizedBox(
-      heightFactor: mobile ? 0.92 : 0.94,
-      child: Material(
-        color: AuroraDark.bgElevated,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
+    return Scaffold(
+      backgroundColor: AuroraDark.bg,
+      appBar: AppBar(
+        backgroundColor: AuroraDark.bgElevated,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _Handle(),
-            _Header(
-              onClose: () => Navigator.of(context).maybePop(),
-              showResults: _showResults,
-              onBack: _showResults ? _backToSelection : null,
+            Text(
+              'Compare CV versions',
+              style: AppType.titleLarge.copyWith(fontSize: 17),
             ),
-            const Divider(height: 1, color: AuroraDark.border),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  mobile ? AppSpacing.md : AppSpacing.lg,
-                  AppSpacing.md,
-                  mobile ? AppSpacing.md : AppSpacing.lg,
-                  AppSpacing.lg,
-                ),
-                child: docs.length < 2
-                    ? const _NotEnoughCvsState()
-                    : _loadingCompare
-                        ? const _CompareLoadingState()
-                        : _showResults && _compareResult != null
-                            ? _ComparisonResults(
-                                cvA: docs[_firstIndex!],
-                                cvB: docs[_secondIndex!],
-                                stats: _compareResult!.stats,
-                                contentDiff: _compareResult!.contentDiff,
-                                mobile: mobile,
-                              )
-                            : _SelectionStep(
-                                docs: docs,
-                                selectionOrder: _selectionOrder,
-                                onTapItem: _toggleSelect,
-                                mobile: mobile,
-                              ),
-              ),
+            Text(
+              'Pick any 2 different CVs from your list.',
+              style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
             ),
-            if (docs.length >= 2 && !_showResults && !_loadingCompare)
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
-                  child: GradientButton(
-                    label: _canCompare
-                        ? 'Compare these 2 CVs'
-                        : 'Select 2 CVs to compare',
-                    icon: Icons.compare_arrows_rounded,
-                    fullWidth: true,
-                    onPressed: _canCompare ? _runCompare : null,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
+      body: docs.length < 2
+          ? const Center(child: _NotEnoughCvsState())
+          : Column(
+              children: <Widget>[
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      mobile ? AppSpacing.md : AppSpacing.lg,
+                      AppSpacing.md,
+                      mobile ? AppSpacing.md : AppSpacing.lg,
+                      AppSpacing.lg,
+                    ),
+                    child: _SelectionStep(
+                      docs: docs,
+                      selectionOrder: _selectionOrder,
+                      onTapItem: _toggleSelect,
+                      mobile: mobile,
+                    ),
+                  ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+                    child: GradientButton(
+                      label: _canCompare
+                          ? 'Compare these 2 CVs'
+                          : 'Select 2 different CVs',
+                      icon: Icons.compare_arrows_rounded,
+                      fullWidth: true,
+                      onPressed: _canCompare ? _runCompare : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-//  Header / handle
-// ─────────────────────────────────────────────────────────────────────
+class _CompareResultsPage extends StatelessWidget {
+  final CvCompareResult result;
+  final bool mobile;
 
-class _Handle extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
-      child: Center(
-        child: Container(
-          width: 42,
-          height: 4,
-          decoration: BoxDecoration(
-            color: AuroraDark.borderStrong,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  final VoidCallback onClose;
-  final VoidCallback? onBack;
-  final bool showResults;
-
-  const _Header({
-    required this.onClose,
-    required this.showResults,
-    this.onBack,
+  const _CompareResultsPage({
+    required this.result,
+    required this.mobile,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, 4, AppSpacing.sm, AppSpacing.md),
-      child: Row(
-        children: <Widget>[
-          if (onBack != null)
-            IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              color: AuroraDark.textPrimary,
-              onPressed: onBack,
-            )
-          else
-            const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                GradientText(
-                  showResults ? 'Comparison results' : 'Compare CV versions',
-                  style: AppType.headlineSmall,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  showResults
-                      ? 'See how your CV improved between versions.'
-                      : 'Pick two CVs to compare their ATS scores side by side.',
-                  style: AppType.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            color: AuroraDark.textPrimary,
-            onPressed: onClose,
-          ),
-        ],
+    return Scaffold(
+      backgroundColor: AuroraDark.bg,
+      appBar: AppBar(
+        backgroundColor: AuroraDark.bgElevated,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: Text(
+          'Comparison results',
+          style: AppType.titleLarge.copyWith(fontSize: 17),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          mobile ? AppSpacing.md : AppSpacing.lg,
+          AppSpacing.md,
+          mobile ? AppSpacing.md : AppSpacing.lg,
+          AppSpacing.xl,
+        ),
+        child: _ComparisonResults(
+          older: result.older,
+          newer: result.newer,
+          stats: result.stats,
+          contentDiff: result.contentDiff,
+          mobile: mobile,
+        ),
       ),
     );
   }
@@ -300,6 +227,11 @@ class _SelectionStep extends StatelessWidget {
             const SizedBox(width: 8),
             _SlotChip(order: 2, label: _slotLabel(2)),
           ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Tap two different rows below. They can have similar names if you uploaded different versions.',
+          style: AppType.bodySmall.copyWith(color: AuroraDark.textSecondary),
         ),
         AppSpacing.gapMd,
         ...List<Widget>.generate(docs.length, (int i) {
@@ -408,14 +340,26 @@ class _SelectableCvTile extends StatelessWidget {
         : score >= 50
             ? AuroraDark.warning
             : AuroraDark.danger;
-    return GlowCard(
-      onTap: onTap,
-      glowColor: selected ? slotColor : AuroraDark.indigo,
-      padding: EdgeInsets.symmetric(
-        horizontal: mobile ? AppSpacing.sm : AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      child: Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadii.rMd,
+        child: Ink(
+          padding: EdgeInsets.symmetric(
+            horizontal: mobile ? AppSpacing.sm : AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: AuroraDark.surface,
+            borderRadius: AppRadii.rMd,
+            border: Border.all(
+              color: selected
+                  ? slotColor.withValues(alpha: 0.55)
+                  : AuroraDark.border,
+            ),
+          ),
+          child: Row(
         children: <Widget>[
           AnimatedContainer(
             duration: const Duration(milliseconds: 240),
@@ -471,52 +415,18 @@ class _SelectableCvTile extends StatelessWidget {
             dense: true,
           ),
         ],
+          ),
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Step 2 — Comparison results
+//  Comparison results widgets
 // ─────────────────────────────────────────────────────────────────────
 
-class _CompareLoadingState extends StatelessWidget {
-  const _CompareLoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          const SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: AuroraDark.violet,
-            ),
-          ),
-          AppSpacing.gapMd,
-          Text(
-            'Comparing CV versions…',
-            style: AppType.titleLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Analyzing ATS scores, keywords, and content changes.',
-            textAlign: TextAlign.center,
-            style: AppType.bodyMedium.copyWith(color: AuroraDark.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Lightweight card for compare results — avoids many [GlowCard] animation controllers at once.
+/// Lightweight card for compare results.
 class _CompareSurface extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -544,32 +454,22 @@ class _CompareSurface extends StatelessWidget {
 }
 
 class _ComparisonResults extends StatelessWidget {
-  final CVDocument cvA;
-  final CVDocument cvB;
+  final CvCompareSnapshot older;
+  final CvCompareSnapshot newer;
   final ComparisonStats stats;
   final CvContentDiff contentDiff;
   final bool mobile;
 
   const _ComparisonResults({
-    required this.cvA,
-    required this.cvB,
+    required this.older,
+    required this.newer,
     required this.stats,
     required this.contentDiff,
     required this.mobile,
   });
 
-  /// Order so [older] comes before [newer] based on uploadedAt.
-  ({CVDocument older, CVDocument newer}) get _ordered {
-    final bool aIsOlder = cvA.uploadedAt.isBefore(cvB.uploadedAt);
-    return aIsOlder
-        ? (older: cvA, newer: cvB)
-        : (older: cvB, newer: cvA);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final ({CVDocument older, CVDocument newer}) pair = _ordered;
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -577,8 +477,8 @@ class _ComparisonResults extends StatelessWidget {
         _VerdictBanner(stats: stats, mobile: mobile),
         AppSpacing.gapMd,
         _SideBySideCvCards(
-          older: pair.older,
-          newer: pair.newer,
+          older: older,
+          newer: newer,
           mobile: mobile,
         ),
         AppSpacing.gapMd,
@@ -762,8 +662,8 @@ class _VerdictBanner extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────
 
 class _SideBySideCvCards extends StatelessWidget {
-  final CVDocument older;
-  final CVDocument newer;
+  final CvCompareSnapshot older;
+  final CvCompareSnapshot newer;
   final bool mobile;
 
   const _SideBySideCvCards({
@@ -779,7 +679,7 @@ class _SideBySideCvCards extends StatelessWidget {
       children: <Widget>[
         Expanded(
           child: _CvSummaryCard(
-            doc: older,
+            snap: older,
             slot: 'OLDER',
             color: AuroraDark.cyanBright,
             mobile: mobile,
@@ -788,7 +688,7 @@ class _SideBySideCvCards extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _CvSummaryCard(
-            doc: newer,
+            snap: newer,
             slot: 'NEWER',
             color: AuroraDark.violet,
             mobile: mobile,
@@ -800,13 +700,13 @@ class _SideBySideCvCards extends StatelessWidget {
 }
 
 class _CvSummaryCard extends StatelessWidget {
-  final CVDocument doc;
+  final CvCompareSnapshot snap;
   final String slot;
   final Color color;
   final bool mobile;
 
   const _CvSummaryCard({
-    required this.doc,
+    required this.snap,
     required this.slot,
     required this.color,
     required this.mobile,
@@ -814,7 +714,7 @@ class _CvSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int score = doc.report.score;
+    final int score = snap.score;
     final Color scoreColor = score >= 75
         ? AuroraDark.lime
         : score >= 50
@@ -833,13 +733,13 @@ class _CvSummaryCard extends StatelessWidget {
           ),
           AppSpacing.gapXs,
           Text(
-            doc.fileName,
+            snap.fileName,
             style: AppType.titleSmall,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            _formatDate(doc.uploadedAt),
+            _formatDate(snap.uploadedAt),
             style: AppType.bodySmall,
           ),
           AppSpacing.gapSm,
@@ -862,7 +762,7 @@ class _CvSummaryCard extends StatelessWidget {
             ],
           ),
           Text(
-            'ATS score · ${doc.report.engineLabel}',
+            'ATS score · ${snap.engineLabel}',
             style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
           ),
         ],
