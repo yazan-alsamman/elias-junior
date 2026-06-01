@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/common/api_config.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/controller/cv_controller.dart';
 import 'package:app/model/cv_document.dart';
@@ -29,10 +30,43 @@ String normalizePublishedPortfolioUrl(String? raw) {
     return '';
   }
   final RegExp hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://');
-  if (hasScheme.hasMatch(trimmed)) {
-    return trimmed;
+  final String withScheme =
+      hasScheme.hasMatch(trimmed) ? trimmed : 'http://$trimmed';
+  return _rewritePortfolioHostIfNeeded(Uri.tryParse(withScheme));
+}
+
+/// Builds the public `/p/{slug}` URL on the same host as [ApiConfig.baseUrl].
+String buildPublicPortfolioUrl({String? publicSlug, String? serverUrl}) {
+  final String slug = (publicSlug ?? '').trim().toLowerCase();
+  if (RegExp(r'^[a-f0-9]{12}$').hasMatch(slug)) {
+    final Uri api = Uri.parse(ApiConfig.baseUrl);
+    return Uri(
+      scheme: api.scheme,
+      host: api.host,
+      path: '/p/$slug',
+    ).toString();
   }
-  return 'http://$trimmed';
+  return normalizePublishedPortfolioUrl(serverUrl);
+}
+
+bool _isLocalPortfolioHost(String host) {
+  final String h = host.toLowerCase();
+  return h == 'localhost' || h == '127.0.0.1' || h == '10.0.2.2';
+}
+
+String _rewritePortfolioHostIfNeeded(Uri? uri) {
+  if (uri == null || !uri.path.startsWith('/p/')) {
+    return uri?.toString() ?? '';
+  }
+  final Uri api = Uri.parse(ApiConfig.baseUrl);
+  if (_isLocalPortfolioHost(uri.host) && !_isLocalPortfolioHost(api.host)) {
+    return Uri(
+      scheme: api.scheme,
+      host: api.host,
+      path: uri.path,
+    ).toString();
+  }
+  return uri.toString();
 }
 
 class PortfolioController extends GetxController {
@@ -571,15 +605,16 @@ class PortfolioController extends GetxController {
       );
       final Map<String, dynamic>? p =
           body['portfolio'] as Map<String, dynamic>?;
-      final String normalized =
-          normalizePublishedPortfolioUrl(p?['portfolioUrl'] as String?);
-      publishedPortfolioUrl = normalized.isEmpty ? null : normalized;
+      final String resolved = buildPublicPortfolioUrl(
+        publicSlug: p?['publicSlug'] as String?,
+        serverUrl: p?['portfolioUrl'] as String?,
+      );
+      publishedPortfolioUrl = resolved.isEmpty ? null : resolved;
       update();
       if (publishedPortfolioUrl != null && publishedPortfolioUrl!.isNotEmpty) {
         AuroraSnack.success(
           'Portfolio published',
-          'Link ready. Open it on the same machine as the API, or set PUBLIC_BASE_URL '
-          'to your PC IP if you use a phone.',
+          'Link ready — open or copy it; use the Hostinger URL in your browser.',
           duration: const Duration(seconds: 6),
         );
       }
