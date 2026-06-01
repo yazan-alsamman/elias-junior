@@ -1,14 +1,13 @@
 import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
-import 'package:app/model/parsed_cv_profile.dart';
 import 'package:app/services/cv_content_diff.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show IconData, Icons;
+import 'package:flutter/scheduler.dart';
 
 /// One row in the metric-by-metric comparison table.
 class MetricCompareRow {
   final String label;
-  final IconData icon;
+  /// Key used by the UI to pick an icon (`shield`, `format`, `key`, etc.).
+  final String iconKey;
   final num oldVal;
   final num newVal;
   final String oldDisplay;
@@ -18,7 +17,7 @@ class MetricCompareRow {
 
   const MetricCompareRow({
     required this.label,
-    required this.icon,
+    required this.iconKey,
     required this.oldVal,
     required this.newVal,
     required this.oldDisplay,
@@ -28,16 +27,6 @@ class MetricCompareRow {
   });
 
   int get delta => (newVal - oldVal).round();
-
-  /// Percent change relative to the older value (for display).
-  int percentChange({required bool higherIsBetter}) {
-    final num base = oldVal;
-    if (base == 0) {
-      if (newVal == 0) return 0;
-      return higherIsBetter ? 100 : -100;
-    }
-    return ((delta / base) * 100).round();
-  }
 }
 
 /// Aggregated ATS / keyword deltas between an older and newer CV.
@@ -99,7 +88,7 @@ class ComparisonStats {
     final List<MetricCompareRow> rows = <MetricCompareRow>[
       MetricCompareRow(
         label: 'ATS score',
-        icon: Icons.shield_rounded,
+        iconKey: 'shield',
         oldVal: a.score,
         newVal: b.score,
         oldDisplay: '${a.score}/100 (${a.engineLabel})',
@@ -108,7 +97,7 @@ class ComparisonStats {
       ),
       MetricCompareRow(
         label: 'Format score',
-        icon: Icons.format_align_left_rounded,
+        iconKey: 'format',
         oldVal: a.formatScore,
         newVal: b.formatScore,
         oldDisplay: '${a.formatScore}%',
@@ -116,7 +105,7 @@ class ComparisonStats {
       ),
       MetricCompareRow(
         label: 'Keywords matched',
-        icon: Icons.key_rounded,
+        iconKey: 'key',
         oldVal: a.keywordsChecked,
         newVal: b.keywordsChecked,
         oldDisplay: a.keywordsTotal > 0
@@ -128,7 +117,7 @@ class ComparisonStats {
       ),
       MetricCompareRow(
         label: 'Sections covered',
-        icon: Icons.view_agenda_rounded,
+        iconKey: 'sections',
         oldVal: oldSec.num,
         newVal: newSec.num,
         oldDisplay: a.sectionMatch.isEmpty ? '—' : a.sectionMatch,
@@ -136,7 +125,7 @@ class ComparisonStats {
       ),
       MetricCompareRow(
         label: 'Missing keywords',
-        icon: Icons.warning_amber_rounded,
+        iconKey: 'warning',
         oldVal: a.missingKeywords.length,
         newVal: b.missingKeywords.length,
         oldDisplay: '${a.missingKeywords.length}',
@@ -177,77 +166,22 @@ class CvCompareResult {
   final CvContentDiff contentDiff;
 }
 
-class _CompareBundle {
-  const _CompareBundle({required this.stats, required this.contentDiff});
-
-  final ComparisonStats stats;
-  final CvContentDiff contentDiff;
-}
-
-const int _maxTextForCompare = 12000;
-
-Map<String, dynamic> _cvDocumentToMap(CVDocument doc) {
-  final String preview = doc.contentPreview.length > _maxTextForCompare
-      ? doc.contentPreview.substring(0, _maxTextForCompare)
-      : doc.contentPreview;
-  final String extracted = doc.extractedText.length > _maxTextForCompare
-      ? doc.extractedText.substring(0, _maxTextForCompare)
-      : doc.extractedText;
-  return <String, dynamic>{
-    'fileName': doc.fileName,
-    'uploadedAt': doc.uploadedAt.toIso8601String(),
-    'contentPreview': preview,
-    'extractedText': extracted,
-    'report': doc.report.toJson(),
-    if (doc.parsedProfile != null)
-      'parsedCv': doc.parsedProfile!.toPortfolioJson(),
-  };
-}
-
-CVDocument _cvDocumentFromMap(Map<String, dynamic> raw) {
-  final Map<String, dynamic> m = Map<String, dynamic>.from(raw);
-  return CVDocument(
-    fileName: m['fileName'] as String? ?? 'document',
-    uploadedAt:
-        DateTime.tryParse(m['uploadedAt'] as String? ?? '') ?? DateTime.now(),
-    contentPreview: m['contentPreview'] as String? ?? '',
-    extractedText: m['extractedText'] as String? ?? '',
-    report: ATSCheckReport.fromJson(
-      Map<String, dynamic>.from(m['report'] as Map<dynamic, dynamic>),
-    ),
-    parsedProfile: m['parsedCv'] is Map
-        ? ParsedCvProfile.fromJson(
-            Map<String, dynamic>.from(m['parsedCv'] as Map<dynamic, dynamic>),
-          )
-        : null,
-  );
-}
-
-_CompareBundle _compareInIsolate(Map<String, dynamic> payload) {
-  final CVDocument older =
-      _cvDocumentFromMap(Map<String, dynamic>.from(payload['older'] as Map));
-  final CVDocument newer =
-      _cvDocumentFromMap(Map<String, dynamic>.from(payload['newer'] as Map));
-  return _CompareBundle(
-    stats: ComparisonStats.fromDocuments(older, newer),
-    contentDiff: CvContentDiff.between(older, newer),
-  );
-}
-
-/// Runs CV diff + stats off the UI thread to avoid ANR on large résumés.
+/// Compare two CVs without blocking the UI thread.
+///
+/// Previous `compute()` usage froze the app: serializing large CV payloads and
+/// returning objects with non-transferable types hung the main isolate.
 Future<CvCompareResult> compareCvsAsync(CVDocument a, CVDocument b) async {
+  // Let the loading spinner render before any work runs.
+  await Future<void>.delayed(Duration.zero);
+  await SchedulerBinding.instance.endOfFrame;
+
   final bool aIsOlder = a.uploadedAt.isBefore(b.uploadedAt);
   final CVDocument older = aIsOlder ? a : b;
   final CVDocument newer = aIsOlder ? b : a;
 
-  final Map<String, dynamic> payload = <String, dynamic>{
-    'older': _cvDocumentToMap(older),
-    'newer': _cvDocumentToMap(newer),
-  };
+  final ComparisonStats stats = ComparisonStats.fromDocuments(older, newer);
+  await Future<void>.delayed(Duration.zero);
+  final CvContentDiff contentDiff = CvContentDiff.between(older, newer);
 
-  final _CompareBundle bundle = await compute(_compareInIsolate, payload);
-  return CvCompareResult(
-    stats: bundle.stats,
-    contentDiff: bundle.contentDiff,
-  );
+  return CvCompareResult(stats: stats, contentDiff: contentDiff);
 }

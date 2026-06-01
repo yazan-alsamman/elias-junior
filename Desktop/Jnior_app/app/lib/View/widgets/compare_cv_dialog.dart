@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/common/app_colors.dart';
 import 'package:app/common/app_spacing.dart';
 import 'package:app/common/app_typography.dart';
@@ -80,14 +82,27 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
     final CVDocument cvA = docs[_firstIndex!];
     final CVDocument cvB = docs[_secondIndex!];
     setState(() => _loadingCompare = true);
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
     try {
-      final CvCompareResult result = await compareCvsAsync(cvA, cvB);
+      final CvCompareResult result = await compareCvsAsync(cvA, cvB).timeout(
+        const Duration(seconds: 20),
+      );
       if (!mounted) return;
       setState(() {
         _compareResult = result;
         _loadingCompare = false;
-        _showResults = true;
       });
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted) return;
+      setState(() => _showResults = true);
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => _loadingCompare = false);
+      AuroraSnack.error(
+        'Compare timed out',
+        'Comparison took too long. Try again with two smaller CV files.',
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingCompare = false);
@@ -900,6 +915,23 @@ class _MetricRow extends StatelessWidget {
 
   const _MetricRow({required this.row, required this.mobile});
 
+  static IconData _iconForKey(String key) {
+    switch (key) {
+      case 'shield':
+        return Icons.shield_rounded;
+      case 'format':
+        return Icons.format_align_left_rounded;
+      case 'key':
+        return Icons.key_rounded;
+      case 'sections':
+        return Icons.view_agenda_rounded;
+      case 'warning':
+        return Icons.warning_amber_rounded;
+      default:
+        return Icons.analytics_outlined;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color deltaColor;
@@ -932,7 +964,7 @@ class _MetricRow extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Icon(row.icon, color: AuroraDark.textMuted, size: 18),
+          Icon(_iconForKey(row.iconKey), color: AuroraDark.textMuted, size: 18),
           const SizedBox(width: 10),
           Expanded(
             flex: 4,
@@ -1085,6 +1117,8 @@ class _DeltaGroup extends StatelessWidget {
   final String addedLabel;
   final String removedLabel;
 
+  static const int _maxPills = 24;
+
   const _DeltaGroup({
     required this.title,
     required this.added,
@@ -1095,6 +1129,11 @@ class _DeltaGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final List<String> addedShown = added.take(_maxPills).toList();
+    final List<String> removedShown = removed.take(_maxPills).toList();
+    final int addedExtra = added.length - addedShown.length;
+    final int removedExtra = removed.length - removedShown.length;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -1111,10 +1150,18 @@ class _DeltaGroup extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: added
+              children: addedShown
                   .map((String s) => _Pill(label: s, color: AuroraDark.lime))
                   .toList(),
             ),
+            if (addedExtra > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '+$addedExtra more',
+                  style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
+                ),
+              ),
           ],
           if (removed.isNotEmpty) ...<Widget>[
             const SizedBox(height: 8),
@@ -1126,10 +1173,18 @@ class _DeltaGroup extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: removed
+              children: removedShown
                   .map((String s) => _Pill(label: s, color: AuroraDark.danger))
                   .toList(),
             ),
+            if (removedExtra > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '+$removedExtra more',
+                  style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
+                ),
+              ),
           ],
         ],
       ),
@@ -1159,6 +1214,10 @@ class _KeywordsDeltaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color color = positive ? AuroraDark.lime : AuroraDark.danger;
+    const int maxPills = 24;
+    final List<String> shown = keywords.take(maxPills).toList();
+    final int extra = keywords.length - shown.length;
+
     return _CompareSurface(
       accentColor: color,
       padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
@@ -1195,10 +1254,18 @@ class _KeywordsDeltaCard extends StatelessWidget {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: keywords
+            children: shown
                 .map((String k) => _Pill(label: k, color: color))
                 .toList(),
           ),
+          if (extra > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '+$extra more keywords',
+                style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
+              ),
+            ),
         ],
       ),
     );

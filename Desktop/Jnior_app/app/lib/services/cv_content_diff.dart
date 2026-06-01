@@ -43,8 +43,12 @@ class CvContentDiff {
     final ParsedCvProfile? oldP = older.parsedProfile;
     final ParsedCvProfile? newP = newer.parsedProfile;
 
-    final Set<String> oldSkills = _normSet(oldP?.skills ?? _skillsFromText(older));
-    final Set<String> newSkills = _normSet(newP?.skills ?? _skillsFromText(newer));
+    final Set<String> oldSkills = _normSet(
+      oldP?.skills ?? _skillsFromPreview(older.contentPreview),
+    );
+    final Set<String> newSkills = _normSet(
+      newP?.skills ?? _skillsFromPreview(newer.contentPreview),
+    );
     final Set<String> oldCerts = _normSet(oldP?.certifications ?? const <String>[]);
     final Set<String> newCerts = _normSet(newP?.certifications ?? const <String>[]);
 
@@ -143,14 +147,14 @@ class CvContentDiff {
     if (p != null && p.experience.isNotEmpty) {
       return p.experience.map(_formatRole).where((String s) => s.isNotEmpty).toList();
     }
-    return _linesFromSection(doc.contentPreview, 'WORK EXPERIENCE', 'EDUCATION');
+    return _linesFromSection(_preview(doc.contentPreview), 'WORK EXPERIENCE', 'EDUCATION');
   }
 
   static List<String> _educationLines(ParsedCvProfile? p, CVDocument doc) {
     if (p != null && p.education.isNotEmpty) {
       return p.education.map(_formatEdu).where((String s) => s.isNotEmpty).toList();
     }
-    return _linesFromSection(doc.contentPreview, 'EDUCATION', 'SKILLS');
+    return _linesFromSection(_preview(doc.contentPreview), 'EDUCATION', 'SKILLS');
   }
 
   static String _formatRole(Map<String, dynamic> m) {
@@ -190,21 +194,24 @@ class CvContentDiff {
         .toList();
   }
 
-  static List<String> _skillsFromText(CVDocument doc) {
-    final ParsedCvProfile? p = doc.parsedProfile;
-    if (p != null && p.skills.isNotEmpty) return p.skills;
-    final List<String> lines = _linesFromSection(
-      doc.contentPreview,
-      'SKILLS',
-      'CERTIFICATION',
-    );
+  static const int _maxPreviewChars = 4000;
+
+  static String _preview(String text) {
+    if (text.length <= _maxPreviewChars) return text;
+    return text.substring(0, _maxPreviewChars);
+  }
+
+  static List<String> _skillsFromPreview(String preview) {
+    final String text = _preview(preview);
+    final List<String> lines = _linesFromSection(text, 'SKILLS', 'CERTIFICATION');
     if (lines.isEmpty) {
-      return _linesFromSection(doc.contentPreview, 'SKILLS', 'PROJECTS');
+      return _linesFromSection(text, 'SKILLS', 'PROJECTS');
     }
     return lines
         .expand((String l) => l.split(RegExp(r'[,;|/]')))
         .map((String s) => s.trim())
         .where((String s) => s.isNotEmpty)
+        .take(80)
         .toList();
   }
 
