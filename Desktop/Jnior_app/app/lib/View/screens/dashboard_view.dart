@@ -9,7 +9,6 @@ import 'package:app/common/widgets/animated_counter.dart';
 import 'package:app/common/widgets/aurora_background.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/common/widgets/blur_pill.dart';
-import 'package:app/common/widgets/dev_api_banner.dart';
 import 'package:app/common/widgets/empty_state.dart';
 import 'package:app/common/widgets/glow_card.dart';
 import 'package:app/common/widgets/gradient_button.dart';
@@ -95,7 +94,6 @@ class DashboardView extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             if (desktop) AppSpacing.gapSm,
-                            const DevApiBanner(),
                             const _DashboardHero(),
                             AppSpacing.gapXl,
                             _StatsRow(controller: controller),
