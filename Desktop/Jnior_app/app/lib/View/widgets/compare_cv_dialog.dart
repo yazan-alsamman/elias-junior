@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:app/common/app_colors.dart';
 import 'package:app/common/app_spacing.dart';
 import 'package:app/common/app_typography.dart';
 import 'package:app/common/widgets/aurora_feedback.dart';
 import 'package:app/common/widgets/blur_pill.dart';
 import 'package:app/common/widgets/gradient_button.dart';
-import 'package:app/common/widgets/gradient_text.dart';
 import 'package:app/controller/cv_controller.dart';
 import 'package:app/services/cv_compare_engine.dart';
 import 'package:app/services/cv_content_diff.dart';
@@ -36,8 +37,11 @@ class _CompareCvPageState extends State<_CompareCvPage> {
   List<CVDocument> get _docs {
     final CVController c = Get.find<CVController>();
     final List<CVDocument> sorted = List<CVDocument>.from(c.documents)
-      ..sort((CVDocument a, CVDocument b) =>
-          b.uploadedAt.compareTo(a.uploadedAt));
+      ..sort((CVDocument a, CVDocument b) {
+        final int byDate = b.uploadedAt.compareTo(a.uploadedAt);
+        if (byDate != 0) return byDate;
+        return a.fileName.compareTo(b.fileName);
+      });
     return sorted;
   }
 
@@ -68,14 +72,23 @@ class _CompareCvPageState extends State<_CompareCvPage> {
     return null;
   }
 
-  void _runCompare() {
+  Future<void> _runCompare() async {
     if (!_canCompare) return;
     final List<CVDocument> docs = List<CVDocument>.from(_docs);
     final CVDocument cvA = docs[_firstIndex!];
     final CVDocument cvB = docs[_secondIndex!];
-    final CvCompareResult result = compareDocuments(cvA, cvB);
     final bool mobile = MediaQuery.sizeOf(context).width < 700;
-    Navigator.of(context).push<void>(
+
+    // Yield so the tap handler returns before route build (prevents Android ANR).
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+
+    final CvCompareResult result = compareDocuments(cvA, cvB);
+
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+
+    await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (BuildContext _) => _CompareResultsPage(
           result: result,
@@ -144,7 +157,8 @@ class _CompareCvPageState extends State<_CompareCvPage> {
                           : 'Select 2 different CVs',
                       icon: Icons.compare_arrows_rounded,
                       fullWidth: true,
-                      onPressed: _canCompare ? _runCompare : null,
+                      burstOnTap: false,
+                      onPressed: _canCompare ? () => unawaited(_runCompare()) : null,
                     ),
                   ),
                 ),
@@ -154,7 +168,7 @@ class _CompareCvPageState extends State<_CompareCvPage> {
   }
 }
 
-class _CompareResultsPage extends StatelessWidget {
+class _CompareResultsPage extends StatefulWidget {
   final CvCompareResult result;
   final bool mobile;
 
@@ -162,6 +176,21 @@ class _CompareResultsPage extends StatelessWidget {
     required this.result,
     required this.mobile,
   });
+
+  @override
+  State<_CompareResultsPage> createState() => _CompareResultsPageState();
+}
+
+class _CompareResultsPageState extends State<_CompareResultsPage> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,21 +208,34 @@ class _CompareResultsPage extends StatelessWidget {
           style: AppType.titleLarge.copyWith(fontSize: 17),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          mobile ? AppSpacing.md : AppSpacing.lg,
-          AppSpacing.md,
-          mobile ? AppSpacing.md : AppSpacing.lg,
-          AppSpacing.xl,
-        ),
-        child: _ComparisonResults(
-          older: result.older,
-          newer: result.newer,
-          stats: result.stats,
-          contentDiff: result.contentDiff,
-          mobile: mobile,
-        ),
-      ),
+      body: _ready
+          ? ListView(
+              padding: EdgeInsets.fromLTRB(
+                widget.mobile ? AppSpacing.md : AppSpacing.lg,
+                AppSpacing.md,
+                widget.mobile ? AppSpacing.md : AppSpacing.lg,
+                AppSpacing.xl,
+              ),
+              children: <Widget>[
+                _ComparisonResults(
+                  older: widget.result.older,
+                  newer: widget.result.newer,
+                  stats: widget.result.stats,
+                  contentDiff: widget.result.contentDiff,
+                  mobile: widget.mobile,
+                ),
+              ],
+            )
+          : const Center(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: AuroraDark.violet,
+                ),
+              ),
+            ),
     );
   }
 }
@@ -675,7 +717,7 @@ class _SideBySideCvCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Expanded(
           child: _CvSummaryCard(
@@ -789,9 +831,9 @@ class _MetricsCompareCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          GradientText(
+          Text(
             'Metric-by-metric',
-            style: AppType.headlineSmall,
+            style: AppType.headlineSmall.copyWith(color: AuroraDark.textPrimary),
           ),
           const SizedBox(height: 4),
           Text(
@@ -854,6 +896,62 @@ class _MetricRow extends StatelessWidget {
         : row.delta == 0
             ? '0'
             : (row.delta > 0 ? '+' : '') + row.delta.toString();
+
+    if (mobile) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AuroraDark.surfaceAlt,
+          borderRadius: AppRadii.rSm,
+          border: Border.all(color: AuroraDark.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(_iconForKey(row.iconKey),
+                    color: AuroraDark.textMuted, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(row.label, style: AppType.titleSmall),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: deltaColor.withValues(alpha: 0.14),
+                    borderRadius: AppRadii.rPill,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(deltaIcon, size: 14, color: deltaColor),
+                      const SizedBox(width: 2),
+                      Text(
+                        deltaText,
+                        style: TextStyle(
+                          color: deltaColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${row.oldDisplay} → ${row.newDisplay}',
+              style: AppType.bodySmall.copyWith(
+                color: AuroraDark.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -961,9 +1059,9 @@ class _ContentDeltaSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          GradientText(
+          Text(
             'What changed between CVs',
-            style: AppType.headlineSmall,
+            style: AppType.headlineSmall.copyWith(color: AuroraDark.textPrimary),
           ),
           const SizedBox(height: 4),
           Text(
