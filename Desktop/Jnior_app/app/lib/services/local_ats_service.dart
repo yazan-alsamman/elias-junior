@@ -5,6 +5,23 @@ import 'package:app/common/api_config.dart';
 import 'package:app/model/ats_check_report.dart';
 import 'package:http/http.dart' as http;
 
+/// Thrown when the ATS engine is unreachable or the wrong service is on the port.
+class AtsServiceException implements Exception {
+  AtsServiceException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Result of probing the local ATS health endpoint.
+class AtsPingResult {
+  const AtsPingResult({required this.ok, this.reason});
+
+  final bool ok;
+  final String? reason;
+}
+
 /// Direct multipart call to the local Uvicorn ATS rule engine.
 ///
 ///   POST {atsBaseUrl}/ats-format/check    (field: file)
@@ -87,18 +104,57 @@ class LocalAtsService {
 
   String get _baseUrl => ApiConfig.atsBaseUrl.replaceAll(RegExp(r'/+$'), '');
 
-  /// Quick `GET /` health check.
+  /// Quick health check — verifies the real ATS Rule Engine is listening.
   Future<bool> ping({Duration timeout = const Duration(seconds: 5)}) async {
+    final AtsPingResult result = await diagnose(timeout: timeout);
+    return result.ok;
+  }
+
+  /// Explains why ATS is offline (wrong port owner vs engine not started).
+  Future<AtsPingResult> diagnose({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final Uri root = Uri.parse('$_baseUrl/');
     try {
-      final http.Response res = await http
-          .get(Uri.parse('$_baseUrl/'))
-          .timeout(timeout);
-      if (res.statusCode != 200) return false;
-      final Map<String, dynamic>? body =
-          jsonDecode(res.body) as Map<String, dynamic>?;
-      return body?['status'] == 'ok';
-    } catch (_) {
-      return false;
+      final http.Response res = await http.get(root).timeout(timeout);
+      final String body = res.body.trim();
+
+      if (res.statusCode == 404 &&
+          body.contains('"success"') &&
+          body.contains('Not found')) {
+        return AtsPingResult(
+          ok: false,
+          reason:
+              'Port ${ApiConfig.atsPort} is used by another app (not ATS). '
+              'Stop that process or run: .\\start-ats-uvicorn.cmd',
+        );
+      }
+
+      if (res.statusCode != 200) {
+        return AtsPingResult(
+          ok: false,
+          reason: 'ATS HTTP ${res.statusCode} at $_baseUrl/',
+        );
+      }
+
+      final Map<String, dynamic>? json =
+          jsonDecode(body) as Map<String, dynamic>?;
+      if (json?['service'] == 'ATS Rule Engine' && json?['status'] == 'ok') {
+        return const AtsPingResult(ok: true);
+      }
+
+      return AtsPingResult(
+        ok: false,
+        reason:
+            'Unexpected service on $_baseUrl/ — run .\\start-ats-uvicorn.cmd',
+      );
+    } catch (e) {
+      return AtsPingResult(
+        ok: false,
+        reason:
+            'Cannot reach ATS at $_baseUrl — run .\\start-local-dev.cmd (or .\\start-ats-uvicorn.cmd). '
+            '$e',
+      );
     }
   }
 
@@ -107,6 +163,14 @@ class LocalAtsService {
     required String fileName,
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final AtsPingResult probe = await diagnose(timeout: const Duration(seconds: 5));
+    if (!probe.ok) {
+      throw AtsServiceException(
+        probe.reason ??
+            'ATS engine offline. Start: .\\start-ats-uvicorn.cmd (${ApiConfig.atsBaseUrl})',
+      );
+    }
+
     final Uri uri = Uri.parse('$_baseUrl/ats-format/check');
     final http.MultipartRequest req = http.MultipartRequest('POST', uri);
     req.files.add(
@@ -115,7 +179,13 @@ class LocalAtsService {
     final http.StreamedResponse streamed = await req.send().timeout(timeout);
     final String body = await streamed.stream.bytesToString();
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-      throw Exception(
+      if (streamed.statusCode == 404) {
+        throw AtsServiceException(
+          'ATS endpoint missing on ${ApiConfig.atsBaseUrl}. '
+          'Wrong service on this port — run .\\start-ats-uvicorn.cmd',
+        );
+      }
+      throw AtsServiceException(
         'ATS HTTP ${streamed.statusCode}: ${body.substring(0, body.length.clamp(0, 240))}',
       );
     }

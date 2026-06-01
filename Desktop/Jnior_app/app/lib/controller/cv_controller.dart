@@ -783,11 +783,20 @@ class CVController extends GetxController {
           fileBytes: fileBytes,
           fileName: name,
         );
+      } on AtsServiceException catch (atsErr) {
+        AuroraSnack.error(
+          'ATS engine offline',
+          atsErr.message,
+          duration: const Duration(seconds: 10),
+        );
+        isUploading = false;
+        update();
+        return;
       } catch (atsErr) {
         AuroraSnack.error(
           'ATS engine offline',
-          'Start ATS: .\\start-local-dev.cmd  (URL: ${ApiConfig.atsBaseUrl})\n$atsErr',
-          duration: const Duration(seconds: 8),
+          'Start ATS: .\\start-ats-uvicorn.cmd  (URL: ${ApiConfig.atsBaseUrl})\n$atsErr',
+          duration: const Duration(seconds: 10),
         );
         isUploading = false;
         update();

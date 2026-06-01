@@ -1,6 +1,6 @@
 @echo off
 :: Local stack:
-::   - ATS rule engine  http://127.0.0.1:8000
+::   - ATS rule engine  http://127.0.0.1:8010
 ::   - RAG job-fit API  http://127.0.0.1:8002  (needs OPENAI_API_KEY + ingest)
 ::   - Node API         http://127.0.0.1:3003  (saves ATS results to Mongo)
 ::
@@ -10,8 +10,8 @@
 set ROOT=%~dp0
 set ATS_DIR=%ROOT%Junior_code\ats-rule-engine copy
 
-echo [1/3] ATS Rule Engine (Uvicorn) on http://127.0.0.1:8000 ...
-start "Uvicorn - ATS :8000" cmd /k "cd /d "%ATS_DIR%" && pip install -r requirements.txt -q 2>nul && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+echo [1/3] ATS Rule Engine (Uvicorn) on http://127.0.0.1:8010 ...
+start "Uvicorn - ATS :8010" cmd /k "cd /d "%ATS_DIR%" && pip install -r requirements.txt -q 2>nul && uvicorn app.main:app --host 0.0.0.0 --port 8010"
 
 timeout /t 2 /nobreak >nul
 
@@ -27,7 +27,7 @@ start "Node - CareerPath API :3003" cmd /k "cd /d "%ROOT%backend" && npm start"
 echo.
 echo ============================================================
 echo  Started:
-echo    ATS:  http://127.0.0.1:8000/
+echo    ATS:  http://127.0.0.1:8010/
 echo    RAG:  http://127.0.0.1:8002/health  (run: python -m cv_rag.cli ingest)
 echo    Node: http://127.0.0.1:3003/health
 echo  Storage: Hostinger, falls back to local Node on 404

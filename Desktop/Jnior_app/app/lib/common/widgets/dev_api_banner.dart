@@ -30,7 +30,7 @@ class _DevApiBannerState extends State<DevApiBanner> {
   }
 
   Future<void> _loadLocalServices() async {
-    final bool atsOk = await LocalAtsService.instance.ping();
+    final AtsPingResult ats = await LocalAtsService.instance.diagnose();
     bool nodeOk = false;
     try {
       final http.Response res = await http
@@ -46,9 +46,9 @@ class _DevApiBannerState extends State<DevApiBanner> {
     }
     if (!mounted) return;
     setState(() {
-      _atsLine = atsOk
+      _atsLine = ats.ok
           ? 'Local ATS OK (${ApiConfig.atsBaseUrl})'
-          : 'Local ATS offline — run .\\start-local-dev.cmd';
+          : (ats.reason ?? 'Local ATS offline — run .\\start-ats-uvicorn.cmd');
       _parserLine = ApiConfig.cvParserEnabled
           ? 'CV parser enabled (not started in this build)'
           : 'CV parser paused — ATS-only uploads';

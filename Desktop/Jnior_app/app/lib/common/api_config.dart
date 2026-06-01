@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// Three URLs used by the app:
 ///
 /// 1. `baseUrl`        — Hostinger Express backend (auth, Mongo storage, portfolio).
-/// 2. `atsBaseUrl`     — local Uvicorn ATS rule engine (port 8000) on your PC.
+/// 2. `atsBaseUrl`     — local Uvicorn ATS rule engine (port 8010) on your PC.
 /// 3. `cvParserBaseUrl` — local Uvicorn CV parser (Llama 3.2 + LoRA, port 8001) on your PC.
 /// 4. `ragBaseUrl`       — local CV RAG job-fit API (port 8002) on your PC.
 ///
@@ -48,10 +48,13 @@ class ApiConfig {
     return _productionBase;
   }
 
-  /// Local ATS engine (port 8000). Use `10.0.2.2` on Android emulator.
+  /// Default ATS port (8010 avoids common conflicts with other dev APIs on 8000).
+  static const int atsPort = 8010;
+
+  /// Local ATS engine. Use `10.0.2.2` on Android emulator.
   static String get atsBaseUrl {
     if (_fromEnvAts.isNotEmpty) return _fromEnvAts;
-    return _localLoopback(8000);
+    return _localLoopback(atsPort);
   }
 
   /// Local CV parser (port 8001). Use `10.0.2.2` on Android emulator.
