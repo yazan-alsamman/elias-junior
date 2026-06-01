@@ -7,8 +7,8 @@ import 'package:app/common/widgets/glow_card.dart';
 import 'package:app/common/widgets/gradient_button.dart';
 import 'package:app/common/widgets/gradient_text.dart';
 import 'package:app/controller/cv_controller.dart';
+import 'package:app/services/cv_compare_engine.dart';
 import 'package:app/services/cv_content_diff.dart';
-import 'package:app/model/ats_check_report.dart';
 import 'package:app/model/cv_document.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -36,6 +36,8 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
   int? _firstIndex;
   int? _secondIndex;
   bool _showResults = false;
+  bool _loadingCompare = false;
+  CvCompareResult? _compareResult;
 
   List<CVDocument> get _docs {
     final CVController c = Get.find<CVController>();
@@ -72,6 +74,37 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
     return null;
   }
 
+  Future<void> _runCompare() async {
+    if (!_canCompare || _loadingCompare) return;
+    final List<CVDocument> docs = List<CVDocument>.from(_docs);
+    final CVDocument cvA = docs[_firstIndex!];
+    final CVDocument cvB = docs[_secondIndex!];
+    setState(() => _loadingCompare = true);
+    try {
+      final CvCompareResult result = await compareCvsAsync(cvA, cvB);
+      if (!mounted) return;
+      setState(() {
+        _compareResult = result;
+        _loadingCompare = false;
+        _showResults = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingCompare = false);
+      AuroraSnack.error(
+        'Compare failed',
+        'Could not compare these CVs. Try again in a moment.',
+      );
+    }
+  }
+
+  void _backToSelection() {
+    setState(() {
+      _showResults = false;
+      _compareResult = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<CVDocument> docs = _docs;
@@ -91,9 +124,7 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
             _Header(
               onClose: () => Navigator.of(context).maybePop(),
               showResults: _showResults,
-              onBack: _showResults
-                  ? () => setState(() => _showResults = false)
-                  : null,
+              onBack: _showResults ? _backToSelection : null,
             ),
             const Divider(height: 1, color: AuroraDark.border),
             Expanded(
@@ -106,21 +137,25 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
                 ),
                 child: docs.length < 2
                     ? const _NotEnoughCvsState()
-                    : _showResults
-                        ? _ComparisonResults(
-                            cvA: docs[_firstIndex!],
-                            cvB: docs[_secondIndex!],
-                            mobile: mobile,
-                          )
-                        : _SelectionStep(
-                            docs: docs,
-                            selectionOrder: _selectionOrder,
-                            onTapItem: _toggleSelect,
-                            mobile: mobile,
-                          ),
+                    : _loadingCompare
+                        ? const _CompareLoadingState()
+                        : _showResults && _compareResult != null
+                            ? _ComparisonResults(
+                                cvA: docs[_firstIndex!],
+                                cvB: docs[_secondIndex!],
+                                stats: _compareResult!.stats,
+                                contentDiff: _compareResult!.contentDiff,
+                                mobile: mobile,
+                              )
+                            : _SelectionStep(
+                                docs: docs,
+                                selectionOrder: _selectionOrder,
+                                onTapItem: _toggleSelect,
+                                mobile: mobile,
+                              ),
               ),
             ),
-            if (docs.length >= 2 && !_showResults)
+            if (docs.length >= 2 && !_showResults && !_loadingCompare)
               SafeArea(
                 top: false,
                 child: Padding(
@@ -132,11 +167,7 @@ class _CompareCvSheetState extends State<_CompareCvSheet> {
                         : 'Select 2 CVs to compare',
                     icon: Icons.compare_arrows_rounded,
                     fullWidth: true,
-                    onPressed: _canCompare
-                        ? () {
-                            setState(() => _showResults = true);
-                          }
-                        : null,
+                    onPressed: _canCompare ? _runCompare : null,
                   ),
                 ),
               ),
@@ -434,14 +465,81 @@ class _SelectableCvTile extends StatelessWidget {
 //  Step 2 — Comparison results
 // ─────────────────────────────────────────────────────────────────────
 
+class _CompareLoadingState extends StatelessWidget {
+  const _CompareLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: AuroraDark.violet,
+            ),
+          ),
+          AppSpacing.gapMd,
+          Text(
+            'Comparing CV versions…',
+            style: AppType.titleLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Analyzing ATS scores, keywords, and content changes.',
+            textAlign: TextAlign.center,
+            style: AppType.bodyMedium.copyWith(color: AuroraDark.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lightweight card for compare results — avoids many [GlowCard] animation controllers at once.
+class _CompareSurface extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final Color? accentColor;
+
+  const _CompareSurface({
+    required this.child,
+    this.padding,
+    this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = accentColor ?? AuroraDark.indigo;
+    return Container(
+      padding: padding ?? const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AuroraDark.surface,
+        borderRadius: AppRadii.rLg,
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: child,
+    );
+  }
+}
+
 class _ComparisonResults extends StatelessWidget {
   final CVDocument cvA;
   final CVDocument cvB;
+  final ComparisonStats stats;
+  final CvContentDiff contentDiff;
   final bool mobile;
 
   const _ComparisonResults({
     required this.cvA,
     required this.cvB,
+    required this.stats,
+    required this.contentDiff,
     required this.mobile,
   });
 
@@ -456,8 +554,6 @@ class _ComparisonResults extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ({CVDocument older, CVDocument newer}) pair = _ordered;
-    final _ComparisonStats stats = _ComparisonStats.from(pair.older, pair.newer);
-    final CvContentDiff contentDiff = CvContentDiff.between(pair.older, pair.newer);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -508,7 +604,7 @@ class _ComparisonResults extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────
 
 class _VerdictBanner extends StatelessWidget {
-  final _ComparisonStats stats;
+  final ComparisonStats stats;
   final bool mobile;
 
   const _VerdictBanner({required this.stats, required this.mobile});
@@ -516,8 +612,8 @@ class _VerdictBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!stats.scoresComparable) {
-      return GlowCard(
-        glowColor: AuroraDark.warning,
+      return _CompareSurface(
+        accentColor: AuroraDark.warning,
         padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
         child: Row(
           children: <Widget>[
@@ -542,7 +638,7 @@ class _VerdictBanner extends StatelessWidget {
                   Text(
                     'Older: ${stats.older.engineLabel} (${stats.older.score}/100) · '
                     'Newer: ${stats.newer.engineLabel} (${stats.newer.score}/100). '
-                    'Re-upload both CVs with local ATS running on :8000 for a fair comparison.',
+                    'Re-upload both CVs with local ATS running on :8010 for a fair comparison.',
                     style: AppType.bodySmall,
                   ),
                 ],
@@ -554,6 +650,7 @@ class _VerdictBanner extends StatelessWidget {
     }
 
     final int delta = stats.scoreDelta;
+    final int pct = stats.scoreChangePercent;
     final bool improved = delta > 0;
     final bool same = delta == 0;
     final Color color = same
@@ -566,19 +663,22 @@ class _VerdictBanner extends StatelessWidget {
         : improved
             ? Icons.trending_up_rounded
             : Icons.trending_down_rounded;
+    final String pctLabel = same
+        ? '0%'
+        : '${pct >= 0 ? '+' : ''}$pct%';
     final String headline = same
-        ? 'No change in ATS accuracy'
+        ? 'No change in ATS performance'
         : improved
-            ? 'Newer CV improved by $delta points'
-            : 'Newer CV declined by ${delta.abs()} points';
+            ? 'Newer CV improved by $pctLabel'
+            : 'Newer CV declined by ${pct.abs()}%';
     final String sub = same
-        ? 'Same ATS score across both versions — check added/removed content below.'
+        ? 'Same ATS score (${stats.older.score}/100) — see added/removed content below.'
         : improved
-            ? 'What improved in the newer CV is summarized below (skills, sections, keywords).'
-            : 'What regressed in the newer CV — review removed content and new gaps below.';
+            ? '${stats.older.score} → ${stats.newer.score} points ($delta pt change). Details below.'
+            : '${stats.older.score} → ${stats.newer.score} points (${delta.abs()} pt drop). Review regressions below.';
 
-    return GlowCard(
-      glowColor: color,
+    return _CompareSurface(
+      accentColor: color,
       padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
       child: Row(
         children: <Widget>[
@@ -618,13 +718,22 @@ class _VerdictBanner extends StatelessWidget {
           if (!same)
             Padding(
               padding: const EdgeInsets.only(left: 8),
-              child: Text(
-                (improved ? '+' : '') + delta.toString(),
-                style: AppType.headlineMedium.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w900,
-                  fontSize: mobile ? 24 : 28,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(
+                    pctLabel,
+                    style: AppType.headlineMedium.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                      fontSize: mobile ? 22 : 26,
+                    ),
+                  ),
+                  Text(
+                    '${improved ? '+' : ''}$delta pts',
+                    style: AppType.labelSmall.copyWith(color: AuroraDark.textMuted),
+                  ),
+                ],
               ),
             ),
         ],
@@ -696,8 +805,8 @@ class _CvSummaryCard extends StatelessWidget {
         : score >= 50
             ? AuroraDark.warning
             : AuroraDark.danger;
-    return GlowCard(
-      glowColor: color,
+    return _CompareSurface(
+      accentColor: color,
       padding: EdgeInsets.all(mobile ? AppSpacing.sm : AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -752,15 +861,15 @@ class _CvSummaryCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────
 
 class _MetricsCompareCard extends StatelessWidget {
-  final _ComparisonStats stats;
+  final ComparisonStats stats;
   final bool mobile;
 
   const _MetricsCompareCard({required this.stats, required this.mobile});
 
   @override
   Widget build(BuildContext context) {
-    return GlowCard(
-      glowColor: AuroraDark.cyanBright,
+    return _CompareSurface(
+      accentColor: AuroraDark.cyanBright,
       padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -914,8 +1023,8 @@ class _ContentDeltaSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlowCard(
-      glowColor: AuroraDark.indigo,
+    return _CompareSurface(
+      accentColor: AuroraDark.indigo,
       padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1050,8 +1159,8 @@ class _KeywordsDeltaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color color = positive ? AuroraDark.lime : AuroraDark.danger;
-    return GlowCard(
-      glowColor: color,
+    return _CompareSurface(
+      accentColor: color,
       padding: EdgeInsets.all(mobile ? AppSpacing.md : AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1176,148 +1285,6 @@ class _NotEnoughCvsState extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  Comparison stats
-// ─────────────────────────────────────────────────────────────────────
-
-class MetricCompareRow {
-  final String label;
-  final IconData icon;
-  final num oldVal;
-  final num newVal;
-  final String oldDisplay;
-  final String newDisplay;
-  final bool higherIsBetter;
-  final bool showDelta;
-
-  const MetricCompareRow({
-    required this.label,
-    required this.icon,
-    required this.oldVal,
-    required this.newVal,
-    required this.oldDisplay,
-    required this.newDisplay,
-    this.higherIsBetter = true,
-    this.showDelta = true,
-  });
-
-  int get delta => (newVal - oldVal).round();
-}
-
-class _ComparisonStats {
-  final ATSCheckReport older;
-  final ATSCheckReport newer;
-  final bool scoresComparable;
-  final int scoreDelta;
-  final List<MetricCompareRow> rows;
-  final List<String> keywordsResolved;
-  final List<String> keywordsNewlyMissing;
-
-  const _ComparisonStats({
-    required this.older,
-    required this.newer,
-    required this.scoresComparable,
-    required this.scoreDelta,
-    required this.rows,
-    required this.keywordsResolved,
-    required this.keywordsNewlyMissing,
-  });
-
-  factory _ComparisonStats.from(CVDocument oldDoc, CVDocument newDoc) {
-    final ATSCheckReport a = oldDoc.report;
-    final ATSCheckReport b = newDoc.report;
-
-    final Set<String> oldKw = a.missingKeywords
-        .map((String s) => s.trim().toLowerCase())
-        .where((String s) => s.isNotEmpty)
-        .toSet();
-    final Set<String> newKw = b.missingKeywords
-        .map((String s) => s.trim().toLowerCase())
-        .where((String s) => s.isNotEmpty)
-        .toSet();
-    final List<String> resolved =
-        a.missingKeywords.where((String k) {
-      final String key = k.trim().toLowerCase();
-      return key.isNotEmpty && !newKw.contains(key);
-    }).toList();
-    final List<String> newlyMissing =
-        b.missingKeywords.where((String k) {
-      final String key = k.trim().toLowerCase();
-      return key.isNotEmpty && !oldKw.contains(key);
-    }).toList();
-
-    final ({int num, int den}) oldSec = _parseFraction(a.sectionMatch);
-    final ({int num, int den}) newSec = _parseFraction(b.sectionMatch);
-    final bool scoresComparable = a.scoresAreComparable(b);
-
-    final List<MetricCompareRow> rows = <MetricCompareRow>[
-      MetricCompareRow(
-        label: 'ATS score',
-        icon: Icons.shield_rounded,
-        oldVal: a.score,
-        newVal: b.score,
-        oldDisplay: '${a.score}/100 (${a.engineLabel})',
-        newDisplay: '${b.score}/100 (${b.engineLabel})',
-        showDelta: scoresComparable,
-      ),
-      MetricCompareRow(
-        label: 'Format score',
-        icon: Icons.format_align_left_rounded,
-        oldVal: a.formatScore,
-        newVal: b.formatScore,
-        oldDisplay: '${a.formatScore}%',
-        newDisplay: '${b.formatScore}%',
-      ),
-      MetricCompareRow(
-        label: 'Keywords matched',
-        icon: Icons.key_rounded,
-        oldVal: a.keywordsChecked,
-        newVal: b.keywordsChecked,
-        oldDisplay:
-            a.keywordsTotal > 0 ? '${a.keywordsChecked}/${a.keywordsTotal}' : '${a.keywordsChecked}',
-        newDisplay:
-            b.keywordsTotal > 0 ? '${b.keywordsChecked}/${b.keywordsTotal}' : '${b.keywordsChecked}',
-      ),
-      MetricCompareRow(
-        label: 'Sections covered',
-        icon: Icons.view_agenda_rounded,
-        oldVal: oldSec.num,
-        newVal: newSec.num,
-        oldDisplay: a.sectionMatch.isEmpty ? '—' : a.sectionMatch,
-        newDisplay: b.sectionMatch.isEmpty ? '—' : b.sectionMatch,
-      ),
-      MetricCompareRow(
-        label: 'Missing keywords',
-        icon: Icons.warning_amber_rounded,
-        oldVal: a.missingKeywords.length,
-        newVal: b.missingKeywords.length,
-        oldDisplay: '${a.missingKeywords.length}',
-        newDisplay: '${b.missingKeywords.length}',
-        higherIsBetter: false,
-      ),
-    ];
-
-    return _ComparisonStats(
-      older: a,
-      newer: b,
-      scoresComparable: scoresComparable,
-      scoreDelta: scoresComparable ? b.score - a.score : 0,
-      rows: rows,
-      keywordsResolved: resolved,
-      keywordsNewlyMissing: newlyMissing,
-    );
-  }
-
-  static ({int num, int den}) _parseFraction(String s) {
-    final RegExpMatch? m = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(s);
-    if (m == null) return (num: 0, den: 0);
-    return (
-      num: int.tryParse(m.group(1) ?? '') ?? 0,
-      den: int.tryParse(m.group(2) ?? '') ?? 0,
     );
   }
 }
